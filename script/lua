@@ -1,0 +1,2800 @@
+--[[
+╔══════════════════════════════════════════════════════╗
+║          ⚔  WRAITH MPS HUB  v6.0                    ║
+║          Advanced Football Control Suite             ║
+╠══════════════════════════════════════════════════════╣
+║  Password : bundle                                   ║
+║  Open/Close: Right Ctrl                              ║
+║  Toggle Reach: Insert                                ║
+╚══════════════════════════════════════════════════════╝
+]]
+
+-- ════════════════════════════════════════════
+-- SERVICES
+-- ════════════════════════════════════════════
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local Lighting         = game:GetService("Lighting")
+local WS               = game:GetService("Workspace")
+local TeleportService  = game:GetService("TeleportService")
+
+-- ════════════════════════════════════════════
+-- PLAYER
+-- ════════════════════════════════════════════
+local player    = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local camera    = WS.CurrentCamera
+
+-- ════════════════════════════════════════════
+-- CONSTANTS
+-- ════════════════════════════════════════════
+local GRAVITY       = 196.2  -- default Roblox gravity, safe fallback
+pcall(function() GRAVITY = WS.Gravity end)
+local WIN_W, WIN_H  = 420, 580
+
+-- ════════════════════════════════════════════
+-- MASTER SETTINGS
+-- ════════════════════════════════════════════
+local S = {
+    -- Core reach
+    enabled          = false,
+    reachX           = 2.4,
+    reachY           = 1.7,
+    reachZ           = 2.4,
+
+    -- Head reach
+    headReachEnabled = false,
+    headReachX       = 3.0,
+    headReachY       = 2.0,
+    headReachZ       = 3.0,
+
+    -- Keybinds
+    toggleKey        = Enum.KeyCode.Insert,
+    guiKey           = Enum.KeyCode.RightControl,
+
+    -- Auto Reach
+    autoReach        = false,
+    autoReachDist    = 10,
+
+    -- Ball Prediction
+    ballPredict      = false,
+    predictFrames    = 3,
+
+    -- Velocity-based reach
+    velocityReach    = false,
+    velocityMult     = 1.5,
+
+    -- Directional
+    directional      = false,
+    dirAngle         = 90,
+
+    -- Closest ball
+    closestOnly      = false,
+
+    -- Momentum predictor
+    momentumPredict  = false,
+
+    -- Reach burst limiter
+    burstLimiter     = false,
+    burstMax         = 8,        -- max touch events per second
+    burstCount       = 0,
+    burstTimer       = 0,
+
+    -- Fingerprint randomiser
+    fingerprintRandomiser = false,
+    fingerprintRange      = 0.3,
+
+    -- Visual
+    showHitbox       = false,
+    guiTransparency  = 0,
+
+    -- Ball ESP
+    ballESP          = false,
+
+    -- Ball Trail
+    ballTrail        = false,
+
+    -- Velocity vector arrow
+    velocityArrow    = false,
+
+    -- GK Predictor
+    gkPredictor      = false,
+
+    -- Trajectory Line
+    trajEnabled      = false,
+    trajColor        = Color3.fromRGB(80, 180, 255),
+    trajSegments     = 20,
+
+    -- Player Highlight
+    playerHighlight  = false,
+    teamColor        = Color3.fromRGB(60, 200, 120),
+    enemyColor       = Color3.fromRGB(220, 60, 60),
+
+    -- Pass predictor (nearest enemy → nearest teammate)
+    passPredictor    = false,
+
+    -- Player path lines
+    pathLines        = false,
+
+    -- Arrow to ball
+    ballArrow        = false,
+
+    -- Mini scoreboard
+    miniScoreboard   = false,
+
+    -- Ball Landing Zone
+    landingZone      = false,
+
+    -- Last Seen Ghost
+    lastSeenGhost    = false,
+    lastSeenDuration = 3,       -- seconds ghost persists
+
+    -- Ball Velocity Colour Coding (upgrades ballESP)
+    ballVelColor     = false,
+
+    -- Danger Zone Highlight
+    dangerZone       = false,
+    dangerRadius     = 12,      -- studs
+
+    -- Ball Magnet Indicator (pulses ballArrow when in reach range)
+    magnetIndicator  = false,
+
+    -- Camera
+    zoomEnabled      = false,
+    zoomMax          = 200,
+    timeOfDay        = 14,
+    timeEnabled      = false,
+    ambientEnabled   = false,
+    ambientBrightness = 1.0,
+
+    -- Player
+    desyncEnabled    = false,
+    desyncStrength   = 2.0,
+    perfMode         = false,
+    visualThrottle   = 1,
+    disableTrajPerf  = false,
+    disableGKPerf    = false,
+
+    -- Rainbow mode
+    rainbowMode      = false,
+
+    -- Watermark
+    watermarkEnabled = false,
+
+    -- Clock widget
+    clockEnabled     = false,
+
+    -- Server info panel
+    serverInfoEnabled = false,
+
+    -- Minimap (disabled placeholder)
+    minimapEnabled   = false,
+
+    -- Anti-detection
+    randomizeReach   = false,
+    randomRange      = 0.5,
+    randomizeDelay   = false,
+    fakeLag          = false,
+    fakeLagMin       = 0.01,
+    fakeLagMax       = 0.06,
+    humanPattern     = false,
+    autoDisableAdmin = true,
+    whitelistMode    = false,
+    cooldownEnabled  = false,
+    cooldownTime     = 0.1,
+    whitelist        = {},
+
+    -- Stats
+    trackStats       = true,
+    touchCount       = 0,
+    sessionStart     = tick(),
+    sessionLog       = {},
+
+    -- Profiles
+    profiles = {
+        Default    = {reachX=2.4,  reachY=1.7,  reachZ=2.4,  randomizeReach=false, cooldownEnabled=false},
+        Stealth    = {reachX=2.8,  reachY=2.0,  reachZ=2.8,  randomizeReach=true,  cooldownEnabled=true,  cooldownTime=0.15},
+        Aggressive = {reachX=5.0,  reachY=3.5,  reachZ=5.0,  randomizeReach=false, cooldownEnabled=false},
+    },
+    activeProfile = "Default",
+}
+
+-- ════════════════════════════════════════════
+-- RUNTIME STATE
+-- ════════════════════════════════════════════
+local lastTouchTime     = 0
+local hitboxParts       = {}
+local ballVelocities    = {}
+local lastBallPositions = {}
+local ballSelBoxes      = {}
+local playerHighlights  = {}
+local trajParts         = {}
+local gkMarker          = nil
+local desyncConn        = nil
+local origLightingAmb   = Lighting.Ambient
+local origOutdoorAmb    = Lighting.OutdoorAmbient
+local origTimeOfDay     = Lighting.ClockTime
+
+-- Dirty flags
+local hitboxDirty       = false
+local highlightDirty    = false
+local espDirty          = false
+local cachedClosestBall = nil
+local closestBallTimer  = 0
+
+-- Fingerprint randomiser
+local fingerprintTimer          = 0
+local fpBaseX, fpBaseY, fpBaseZ = S.reachX, S.reachY, S.reachZ
+
+-- Pass predictor parts
+local passParts         = {}
+
+-- Ball arrow / HUD refs (assigned after SG built)
+local ballArrowFrame    = nil
+local miniScoreFrame    = nil
+local watermarkLabel    = nil
+local serverInfoFrame   = nil
+
+-- Player velocity tracking
+local playerPrevPos     = {}
+local playerVelocities  = {}
+
+-- Player path lines  { [player] = { parts={}, positions={} } }
+local pathData          = {}
+
+-- Ball trail / velocity arrow instances
+local ballTrailInst     = nil   -- Trail attached to ball attachment
+local velArrowPart      = nil   -- neon Part arrow
+
+-- Rainbow mode state
+local rainbowHue        = 0
+
+-- Server start time for server info panel
+local serverStartTick   = tick()
+
+-- Ball Landing Zone
+local landingZonePart   = nil
+
+-- Last Seen Ghost  { [player] = {part=Part, expiry=number} }
+local lastSeenData      = {}
+
+-- Danger Zone circle
+local dangerZonePart    = nil
+
+-- Magnet pulse
+local magnetPulseTimer  = 0
+local magnetPulseState  = false
+
+-- ════════════════════════════════════════════
+-- COLOUR PALETTE
+-- ════════════════════════════════════════════
+local C = {
+    bg0      = Color3.fromRGB(8,   8,  14),   -- deepest bg
+    bg1      = Color3.fromRGB(12, 12,  20),   -- window bg
+    bg2      = Color3.fromRGB(16, 16,  28),   -- card bg
+    bg3      = Color3.fromRGB(22, 22,  38),   -- elevated card
+    border   = Color3.fromRGB(32, 38,  68),   -- subtle border
+    accent   = Color3.fromRGB(99, 155, 255),  -- primary blue
+    accent2  = Color3.fromRGB(130, 80, 255),  -- purple accent
+    text0    = Color3.fromRGB(240, 242, 255), -- primary text
+    text1    = Color3.fromRGB(160, 170, 200), -- secondary text
+    text2    = Color3.fromRGB(70,  82, 120),  -- muted text
+    green    = Color3.fromRGB(60,  210, 110),
+    red      = Color3.fromRGB(230,  65,  65),
+    gold     = Color3.fromRGB(255, 195,  55),
+    purple   = Color3.fromRGB(160,  90, 255),
+    cyan     = Color3.fromRGB(55,  210, 215),
+    orange   = Color3.fromRGB(255, 145,  45),
+}
+
+-- ════════════════════════════════════════════
+-- UTILITY
+-- ════════════════════════════════════════════
+local function lerp(a,b,t) return a+(b-a)*t end
+
+local function randomOffset()
+    if S.randomizeReach then return (math.random()*2-1)*S.randomRange end
+    return 0
+end
+
+local function getDelay()
+    if S.fakeLag       then return lerp(S.fakeLagMin, S.fakeLagMax, math.random()) end
+    if S.randomizeDelay then return math.random()*0.05 end
+    if S.humanPattern  then return math.random()*0.03+0.005 end
+    return 0
+end
+
+local function isAdmin(p)
+    for _,n in ipairs({"ROBLOX","builderman"}) do if p.Name==n then return true end end
+    return false
+end
+
+local function logEvent(msg)
+    if not S.trackStats then return end
+    table.insert(S.sessionLog,1,{time=string.format("%.1fs",tick()-S.sessionStart), msg=msg})
+    if #S.sessionLog>60 then table.remove(S.sessionLog) end
+end
+
+local function notify(msg, col) end -- forward-declared; defined after GUI
+
+-- ════════════════════════════════════════════
+-- SCREEN GUI ROOT
+-- ════════════════════════════════════════════
+local SG = Instance.new("ScreenGui")
+SG.Name           = "WraithMPSHub"
+SG.ResetOnSpawn   = false
+pcall(function() SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling end)
+pcall(function() SG.IgnoreGuiInset = true end)
+SG.Parent         = player:WaitForChild("PlayerGui")
+
+-- ════════════════════════════════════════════
+-- NOTIFICATION SYSTEM
+-- ════════════════════════════════════════════
+local notifHolder = Instance.new("Frame")
+notifHolder.Size                   = UDim2.new(0,300,0,240)
+notifHolder.Position               = UDim2.new(1,-312,1,-248)
+notifHolder.BackgroundTransparency = 1
+notifHolder.ZIndex                 = 300
+notifHolder.Parent                 = SG
+local _nll = Instance.new("UIListLayout")
+_nll.VerticalAlignment = Enum.VerticalAlignment.Bottom
+_nll.Padding           = UDim.new(0,5)
+_nll.Parent            = notifHolder
+
+local function spawnNotif(msg, col)
+    col = col or C.accent
+    local nf = Instance.new("Frame")
+    nf.Size                   = UDim2.new(1,0,0,46)
+    nf.BackgroundColor3       = C.bg1
+    nf.BorderSizePixel        = 0
+    nf.BackgroundTransparency = 1
+    nf.ZIndex                 = 301
+    nf.Parent                 = notifHolder
+    Instance.new("UICorner",nf).CornerRadius = UDim.new(0,12)
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color       = col
+    stroke.Thickness   = 1
+    stroke.Transparency = 0.5
+    stroke.Parent      = nf
+
+    local bar = Instance.new("Frame")
+    bar.Size             = UDim2.new(0,3,1,-14)
+    bar.Position         = UDim2.new(0,7,0,7)
+    bar.BackgroundColor3 = col
+    bar.BorderSizePixel  = 0
+    bar.ZIndex           = 302
+    bar.Parent           = nf
+    Instance.new("UICorner",bar).CornerRadius = UDim.new(1,0)
+
+    -- sword icon
+    local icon = Instance.new("TextLabel")
+    icon.Size               = UDim2.new(0,18,0,18)
+    icon.Position           = UDim2.new(0,16,0.5,-9)
+    icon.BackgroundTransparency = 1
+    icon.Text               = "⚔"
+    icon.TextColor3         = col
+    icon.TextSize           = 13
+    icon.Font               = Enum.Font.GothamBold
+    icon.ZIndex             = 302
+    icon.Parent             = nf
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size               = UDim2.new(1,-44,1,0)
+    lbl.Position           = UDim2.new(0,38,0,0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text               = msg
+    lbl.TextColor3         = C.text0
+    lbl.TextSize           = 12
+    lbl.Font               = Enum.Font.GothamMedium
+    lbl.TextXAlignment     = Enum.TextXAlignment.Left
+    lbl.ZIndex             = 302
+    lbl.Parent             = nf
+
+    TweenService:Create(nf,TweenInfo.new(0.25,Enum.EasingStyle.Quart),{BackgroundTransparency=0}):Play()
+    task.delay(2.6,function()
+        TweenService:Create(nf,TweenInfo.new(0.3,Enum.EasingStyle.Quart),{BackgroundTransparency=1}):Play()
+        task.wait(0.31); nf:Destroy()
+    end)
+end
+
+notify = function(msg, col)
+    spawnNotif(msg, col)
+    logEvent(msg)
+end
+
+-- (password screen removed)
+local unlocked = true
+
+-- ════════════════════════════════════════════
+-- MAIN WINDOW
+-- ════════════════════════════════════════════
+local win = Instance.new("Frame")
+win.Name             = "MainWindow"
+win.Size             = UDim2.new(0,WIN_W,0,WIN_H)
+win.Position         = UDim2.new(0.5,-WIN_W/2,0.5,-WIN_H/2)
+win.BackgroundColor3 = C.bg1
+win.BorderSizePixel  = 0
+win.ZIndex           = 10
+win.ClipsDescendants = true
+win.Visible          = false
+win.Parent           = SG
+Instance.new("UICorner",win).CornerRadius = UDim.new(0,16)
+
+local winBg = Instance.new("UIGradient")
+winBg.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(13,13,23)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(8,8,15)),
+})
+winBg.Rotation = 150
+winBg.Parent   = win
+
+local winStroke = Instance.new("UIStroke")
+winStroke.Color       = C.accent
+winStroke.Thickness   = 1.5
+winStroke.Transparency = 0.65
+winStroke.Parent      = win
+
+-- Show main window immediately
+win.Visible = true
+win.BackgroundTransparency = 1
+TweenService:Create(win,TweenInfo.new(0.35,Enum.EasingStyle.Quart),{
+    BackgroundTransparency = 0
+}):Play()
+task.delay(0.8,function()
+    notify("⚔  Wraith MPS Hub  v6.0  loaded", C.accent)
+end)
+
+-- ── TITLE BAR ──────────────────────────────
+local titleBar = Instance.new("Frame")
+titleBar.Size             = UDim2.new(1,0,0,56)
+titleBar.BackgroundColor3 = C.bg0
+titleBar.BorderSizePixel  = 0
+titleBar.ZIndex           = 11
+titleBar.Parent           = win
+Instance.new("UICorner",titleBar).CornerRadius = UDim.new(0,16)
+-- fix bottom round
+local tbFix = Instance.new("Frame")
+tbFix.Size=UDim2.new(1,0,0.5,0); tbFix.Position=UDim2.new(0,0,0.5,0)
+tbFix.BackgroundColor3=C.bg0; tbFix.BorderSizePixel=0; tbFix.ZIndex=11; tbFix.Parent=titleBar
+
+-- Animated accent gradient bar
+local accentBar = Instance.new("Frame")
+accentBar.Size            = UDim2.new(1,0,0,2)
+accentBar.Position        = UDim2.new(0,0,1,-2)
+accentBar.BorderSizePixel = 0
+accentBar.ZIndex          = 12
+accentBar.Parent          = titleBar
+local abGrad = Instance.new("UIGradient")
+abGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0,   Color3.fromRGB(50, 80, 200)),
+    ColorSequenceKeypoint.new(0.3, Color3.fromRGB(99,155,255)),
+    ColorSequenceKeypoint.new(0.6, Color3.fromRGB(130,80,255)),
+    ColorSequenceKeypoint.new(1,   Color3.fromRGB(50,80,200)),
+})
+abGrad.Parent = accentBar
+
+-- Sword logo
+local logoLbl = Instance.new("TextLabel")
+logoLbl.Size               = UDim2.new(0,36,0,36)
+logoLbl.Position           = UDim2.new(0,10,0.5,-18)
+logoLbl.BackgroundTransparency = 1
+logoLbl.Text               = "⚔"
+logoLbl.TextColor3         = C.accent
+logoLbl.TextSize           = 22
+logoLbl.Font               = Enum.Font.GothamBold
+logoLbl.ZIndex             = 13
+logoLbl.Parent             = titleBar
+
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Size               = UDim2.new(1,-170,0,22)
+titleLbl.Position           = UDim2.new(0,50,0,8)
+titleLbl.BackgroundTransparency = 1
+titleLbl.Text               = "WRAITH MPS HUB"
+titleLbl.TextColor3         = C.text0
+titleLbl.TextSize            = 14
+titleLbl.Font               = Enum.Font.GothamBold
+titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
+titleLbl.ZIndex             = 13
+titleLbl.Parent             = titleBar
+
+local subLbl = Instance.new("TextLabel")
+subLbl.Size               = UDim2.new(1,-170,0,14)
+subLbl.Position           = UDim2.new(0,50,0,32)
+subLbl.BackgroundTransparency = 1
+subLbl.Text               = "v4.0  ·  Football Control Suite"
+subLbl.TextColor3         = C.text2
+subLbl.TextSize            = 10
+subLbl.Font               = Enum.Font.Gotham
+subLbl.TextXAlignment     = Enum.TextXAlignment.Left
+subLbl.ZIndex             = 13
+subLbl.Parent             = titleBar
+
+-- Ping label in title bar
+local pingLbl = Instance.new("TextLabel")
+pingLbl.Size               = UDim2.new(0,60,0,14)
+pingLbl.Position           = UDim2.new(1,-170,0,10)
+pingLbl.BackgroundTransparency = 1
+pingLbl.Text               = "— ms"
+pingLbl.TextColor3         = C.text2
+pingLbl.TextSize            = 10
+pingLbl.Font               = Enum.Font.Code
+pingLbl.TextXAlignment     = Enum.TextXAlignment.Right
+pingLbl.ZIndex             = 13
+pingLbl.Parent             = titleBar
+
+-- Min / close
+local function mkTitleBtn(xOff, bg, txt)
+    local b = Instance.new("TextButton")
+    b.Size             = UDim2.new(0,28,0,28)
+    b.Position         = UDim2.new(1,xOff,0.5,-14)
+    b.BackgroundColor3 = bg
+    b.Text             = txt
+    b.TextColor3       = C.text0
+    b.TextSize         = 12
+    b.Font             = Enum.Font.GothamBold
+    b.BorderSizePixel  = 0
+    b.ZIndex           = 14
+    b.Parent           = titleBar
+    Instance.new("UICorner",b).CornerRadius=UDim.new(0,8)
+    return b
+end
+local minBtn   = mkTitleBtn(-68, Color3.fromRGB(30,32,55), "─")
+local closeBtn = mkTitleBtn(-34, Color3.fromRGB(140,28,28), "✕")
+
+-- ── TAB BAR ────────────────────────────────
+local TAB_NAMES = {"REACH","VISUAL","CAMERA","PLAYER","STEALTH","HUB","CREDITS"}
+
+local tabBar = Instance.new("Frame")
+tabBar.Size             = UDim2.new(1,0,0,36)
+tabBar.Position         = UDim2.new(0,0,0,56)
+tabBar.BackgroundColor3 = C.bg0
+tabBar.BorderSizePixel  = 0
+tabBar.ZIndex           = 11
+tabBar.Parent           = win
+
+local tabLL = Instance.new("UIListLayout")
+tabLL.FillDirection = Enum.FillDirection.Horizontal
+tabLL.Padding       = UDim.new(0,0)
+tabLL.Parent        = tabBar
+
+-- ── CONTENT AREA ───────────────────────────
+local contentArea = Instance.new("Frame")
+contentArea.Size             = UDim2.new(1,0,1,-118)
+contentArea.Position         = UDim2.new(0,0,0,92)
+contentArea.BackgroundTransparency = 1
+contentArea.ClipsDescendants = true
+contentArea.ZIndex           = 11
+contentArea.Parent           = win
+
+-- ── STATUS BAR ─────────────────────────────
+local statusBar = Instance.new("Frame")
+statusBar.Size             = UDim2.new(1,0,0,26)
+statusBar.Position         = UDim2.new(0,0,1,-26)
+statusBar.BackgroundColor3 = C.bg0
+statusBar.BorderSizePixel  = 0
+statusBar.ZIndex           = 15
+statusBar.Parent           = win
+
+local statusTxt = Instance.new("TextLabel")
+statusTxt.Size               = UDim2.new(0.55,0,1,0)
+statusTxt.Position           = UDim2.new(0,12,0,0)
+statusTxt.BackgroundTransparency = 1
+statusTxt.Text               = "○  IDLE   Ball: –"
+statusTxt.TextColor3         = C.text2
+statusTxt.TextSize            = 10
+statusTxt.Font               = Enum.Font.Code
+statusTxt.TextXAlignment     = Enum.TextXAlignment.Left
+statusTxt.ZIndex             = 16
+statusTxt.Parent             = statusBar
+
+local touchTxt = Instance.new("TextLabel")
+touchTxt.Size               = UDim2.new(0.44,0,1,0)
+touchTxt.Position           = UDim2.new(0.55,0,0,0)
+touchTxt.BackgroundTransparency = 1
+touchTxt.Text               = "Touches: 0   0s"
+touchTxt.TextColor3         = C.text2
+touchTxt.TextSize            = 10
+touchTxt.Font               = Enum.Font.Code
+touchTxt.TextXAlignment     = Enum.TextXAlignment.Right
+touchTxt.ZIndex             = 16
+touchTxt.Parent             = statusBar
+
+-- ════════════════════════════════════════════
+-- PAGE FACTORY
+-- ════════════════════════════════════════════
+local pages = {}
+
+local function makePage(name)
+    local sf = Instance.new("ScrollingFrame")
+    sf.Name                  = name
+    sf.Size                  = UDim2.new(1,0,1,0)
+    sf.BackgroundTransparency = 1
+    sf.BorderSizePixel       = 0
+    sf.ScrollBarThickness    = 3
+    sf.ScrollBarImageColor3  = C.accent
+    sf.CanvasSize            = UDim2.new(0,0,0,0)
+    pcall(function() sf.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
+    sf.Visible               = false
+    sf.ZIndex                = 12
+    sf.Parent                = contentArea
+
+    local ul = Instance.new("UIListLayout")
+    ul.Padding = UDim.new(0,8)
+    ul.Parent  = sf
+
+    local up = Instance.new("UIPadding")
+    up.PaddingLeft=UDim.new(0,12); up.PaddingRight=UDim.new(0,12)
+    up.PaddingTop=UDim.new(0,14);  up.PaddingBottom=UDim.new(0,16)
+    up.Parent = sf
+
+    pages[name] = sf
+    return sf
+end
+
+-- ════════════════════════════════════════════
+-- WIDGET BUILDERS
+-- ════════════════════════════════════════════
+
+local function mkSection(page, title, icon)
+    local row = Instance.new("Frame")
+    row.Size                  = UDim2.new(1,0,0,28)
+    row.BackgroundTransparency = 1
+    row.ZIndex                = 13
+    row.Parent                = page
+
+    local line = Instance.new("Frame")
+    line.Size             = UDim2.new(1,0,0,1)
+    line.Position         = UDim2.new(0,0,0.5,0)
+    line.BackgroundColor3 = C.border
+    line.BorderSizePixel  = 0
+    line.ZIndex           = 13
+    line.Parent           = row
+
+    local pill = Instance.new("Frame")
+    pcall(function() pill.AutomaticSize = Enum.AutomaticSize.X end)
+    pill.Size              = UDim2.new(0,0,0,22)
+    pill.Position          = UDim2.new(0,0,0.5,-11)
+    pill.BackgroundColor3  = C.bg1
+    pill.BorderSizePixel   = 0
+    pill.ZIndex            = 14
+    pill.Parent            = row
+    Instance.new("UICorner",pill).CornerRadius=UDim.new(1,0)
+    local pp = Instance.new("UIPadding")
+    pp.PaddingLeft=UDim.new(0,8); pp.PaddingRight=UDim.new(0,8); pp.Parent=pill
+
+    local lbl = Instance.new("TextLabel")
+    pcall(function() lbl.AutomaticSize = Enum.AutomaticSize.X end)
+    lbl.Size               = UDim2.new(0,0,1,0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text               = (icon or "◈") .. "  " .. title
+    lbl.TextColor3         = C.accent
+    lbl.TextSize           = 10
+    lbl.Font               = Enum.Font.GothamBold
+    lbl.TextXAlignment     = Enum.TextXAlignment.Left
+    lbl.ZIndex             = 15
+    lbl.Parent             = pill
+end
+
+local function mkSpacer(page, h)
+    local s=Instance.new("Frame")
+    s.Size=UDim2.new(1,0,0,h or 4)
+    s.BackgroundTransparency=1; s.ZIndex=13; s.Parent=page
+end
+
+local function mkCard(page, h)
+    local c = Instance.new("Frame")
+    c.Size             = UDim2.new(1,0,0,h)
+    c.BackgroundColor3 = C.bg2
+    c.BorderSizePixel  = 0
+    c.ZIndex           = 13
+    c.Parent           = page
+    Instance.new("UICorner",c).CornerRadius=UDim.new(0,12)
+    local st=Instance.new("UIStroke")
+    st.Color=C.border; st.Thickness=1; st.Parent=c
+    return c
+end
+
+-- Toggle widget — returns (card, getState)
+local function mkToggle(page, label, desc, default, callback)
+    local h = desc and 58 or 46
+    local card = mkCard(page, h)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size               = UDim2.new(1,-68,0,20)
+    lbl.Position           = UDim2.new(0,14,0,desc and 10 or 13)
+    lbl.BackgroundTransparency = 1
+    lbl.Text               = label
+    lbl.TextColor3         = C.text0
+    lbl.TextSize           = 13
+    lbl.Font               = Enum.Font.GothamSemibold
+    lbl.TextXAlignment     = Enum.TextXAlignment.Left
+    lbl.ZIndex             = 14
+    lbl.Parent             = card
+
+    if desc then
+        local sub=Instance.new("TextLabel")
+        sub.Size=UDim2.new(1,-68,0,14); sub.Position=UDim2.new(0,14,0,32)
+        sub.BackgroundTransparency=1; sub.Text=desc
+        sub.TextColor3=C.text2; sub.TextSize=10; sub.Font=Enum.Font.Gotham
+        sub.TextXAlignment=Enum.TextXAlignment.Left; sub.ZIndex=14; sub.Parent=card
+    end
+
+    local pill=Instance.new("Frame")
+    pill.Size=UDim2.new(0,44,0,24); pill.Position=UDim2.new(1,-56,0.5,-12)
+    pill.BackgroundColor3=default and C.accent or C.bg3
+    pill.BorderSizePixel=0; pill.ZIndex=14; pill.Parent=card
+    Instance.new("UICorner",pill).CornerRadius=UDim.new(1,0)
+
+    local knob=Instance.new("Frame")
+    knob.Size=UDim2.new(0,18,0,18)
+    knob.Position=default and UDim2.new(1,-21,0.5,-9) or UDim2.new(0,3,0.5,-9)
+    knob.BackgroundColor3=Color3.fromRGB(255,255,255)
+    knob.BorderSizePixel=0; knob.ZIndex=15; knob.Parent=pill
+    Instance.new("UICorner",knob).CornerRadius=UDim.new(1,0)
+    -- subtle shadow on knob
+    local ks=Instance.new("UIStroke")
+    ks.Color=Color3.fromRGB(0,0,0); ks.Transparency=0.7; ks.Thickness=1; ks.Parent=knob
+
+    local state=default
+    local hit=Instance.new("TextButton")
+    hit.Size=UDim2.new(1,0,1,0); hit.BackgroundTransparency=1
+    hit.Text=""; hit.ZIndex=16; hit.Parent=card
+
+    hit.MouseButton1Click:Connect(function()
+        state = not state
+        local ti=TweenInfo.new(0.2,Enum.EasingStyle.Quart)
+        TweenService:Create(pill,ti,{BackgroundColor3=state and C.accent or C.bg3}):Play()
+        TweenService:Create(knob,ti,{
+            Position=state and UDim2.new(1,-21,0.5,-9) or UDim2.new(0,3,0.5,-9)
+        }):Play()
+        if callback then callback(state) end
+    end)
+
+    return card, function() return state end
+end
+
+-- Slider widget
+local function mkSlider(page, label, min, max, default, step, callback)
+    step = step or 0.1
+    local card = mkCard(page, 66)
+
+    local lbl=Instance.new("TextLabel")
+    lbl.Size=UDim2.new(0.62,0,0,18); lbl.Position=UDim2.new(0,14,0,10)
+    lbl.BackgroundTransparency=1; lbl.Text=label
+    lbl.TextColor3=C.text1; lbl.TextSize=12; lbl.Font=Enum.Font.GothamSemibold
+    lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.ZIndex=14; lbl.Parent=card
+
+    local valLbl=Instance.new("TextLabel")
+    valLbl.Size=UDim2.new(0.35,0,0,18); valLbl.Position=UDim2.new(0.63,0,0,10)
+    valLbl.BackgroundTransparency=1; valLbl.Text=tostring(default)
+    valLbl.TextColor3=C.accent; valLbl.TextSize=12; valLbl.Font=Enum.Font.GothamBold
+    valLbl.TextXAlignment=Enum.TextXAlignment.Right; valLbl.ZIndex=14; valLbl.Parent=card
+
+    local track=Instance.new("Frame")
+    track.Size=UDim2.new(1,-28,0,5); track.Position=UDim2.new(0,14,0,42)
+    track.BackgroundColor3=C.bg3; track.BorderSizePixel=0; track.ZIndex=14; track.Parent=card
+    Instance.new("UICorner",track).CornerRadius=UDim.new(1,0)
+
+    local fill=Instance.new("Frame")
+    local p0=(default-min)/(max-min)
+    fill.Size=UDim2.new(p0,0,1,0); fill.BackgroundColor3=C.accent
+    fill.BorderSizePixel=0; fill.ZIndex=15; fill.Parent=track
+    Instance.new("UICorner",fill).CornerRadius=UDim.new(1,0)
+    local fGrad=Instance.new("UIGradient")
+    fGrad.Color=ColorSequence.new({
+        ColorSequenceKeypoint.new(0,Color3.fromRGB(99,155,255)),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(130,80,255)),
+    })
+    fGrad.Parent=fill
+
+    local thumb=Instance.new("Frame")
+    thumb.Size=UDim2.new(0,14,0,14); thumb.AnchorPoint=Vector2.new(0.5,0.5)
+    thumb.Position=UDim2.new(p0,0,0.5,0); thumb.BackgroundColor3=Color3.fromRGB(240,240,255)
+    thumb.BorderSizePixel=0; thumb.ZIndex=16; thumb.Parent=track
+    Instance.new("UICorner",thumb).CornerRadius=UDim.new(1,0)
+
+    local drag=false
+    local function setVal(sx)
+        local tx=track.AbsolutePosition.X; local tw=track.AbsoluteSize.X
+        local rel=math.clamp((sx-tx)/tw,0,1)
+        local raw=min+(max-min)*rel
+        local snapped=math.floor(raw/step+0.5)*step
+        snapped=math.clamp(math.floor(snapped*100+0.5)/100,min,max)
+        local p=(snapped-min)/(max-min)
+        fill.Size=UDim2.new(p,0,1,0); thumb.Position=UDim2.new(p,0,0.5,0)
+        valLbl.Text=tostring(snapped)
+        if callback then callback(snapped) end
+    end
+
+    thumb.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then drag=true end end)
+    track.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then drag=true; setVal(i.Position.X) end end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then drag=false end end)
+    UserInputService.InputChanged:Connect(function(i) if drag and i.UserInputType==Enum.UserInputType.MouseMovement then setVal(i.Position.X) end end)
+
+    return card
+end
+
+-- Keybind
+local function mkKeybind(page, label, keyRef, callback)
+    local card=mkCard(page,46)
+    local lbl=Instance.new("TextLabel")
+    lbl.Size=UDim2.new(0.5,0,1,0); lbl.Position=UDim2.new(0,14,0,0)
+    lbl.BackgroundTransparency=1; lbl.Text=label
+    lbl.TextColor3=C.text1; lbl.TextSize=13; lbl.Font=Enum.Font.GothamSemibold
+    lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.ZIndex=14; lbl.Parent=card
+
+    local kb=Instance.new("TextButton")
+    kb.Size=UDim2.new(0,120,0,28); kb.Position=UDim2.new(1,-128,0.5,-14)
+    kb.BackgroundColor3=C.bg3; kb.Text=keyRef[1].Name
+    kb.TextColor3=C.accent; kb.TextSize=11; kb.Font=Enum.Font.GothamBold
+    kb.BorderSizePixel=0; kb.ZIndex=14; kb.Parent=card
+    Instance.new("UICorner",kb).CornerRadius=UDim.new(0,8)
+    local ks=Instance.new("UIStroke"); ks.Color=C.border; ks.Thickness=1; ks.Parent=kb
+
+    local listening=false
+    kb.MouseButton1Click:Connect(function()
+        listening=true; kb.Text="PRESS KEY…"; kb.TextColor3=C.gold
+    end)
+    UserInputService.InputBegan:Connect(function(input,gp)
+        if listening and not gp and input.KeyCode~=Enum.KeyCode.Unknown then
+            listening=false; keyRef[1]=input.KeyCode
+            kb.Text=input.KeyCode.Name; kb.TextColor3=C.accent
+            if callback then callback(input.KeyCode) end
+        end
+    end)
+    return card
+end
+
+-- Profile button
+local function mkProfileBtn(page, name, callback)
+    local card=mkCard(page,46)
+    local nl=Instance.new("TextLabel")
+    nl.Size=UDim2.new(0.55,0,1,0); nl.Position=UDim2.new(0,14,0,0)
+    nl.BackgroundTransparency=1; nl.Text=name
+    nl.TextColor3=C.text1; nl.TextSize=13; nl.Font=Enum.Font.GothamSemibold
+    nl.TextXAlignment=Enum.TextXAlignment.Left; nl.ZIndex=14; nl.Parent=card
+
+    local ab=Instance.new("TextButton")
+    ab.Size=UDim2.new(0,86,0,28); ab.Position=UDim2.new(1,-94,0.5,-14)
+    ab.BackgroundColor3=Color3.fromRGB(18,35,75); ab.Text="APPLY"
+    ab.TextColor3=C.accent; ab.TextSize=11; ab.Font=Enum.Font.GothamBold
+    ab.BorderSizePixel=0; ab.ZIndex=14; ab.Parent=card
+    Instance.new("UICorner",ab).CornerRadius=UDim.new(0,8)
+    local bs=Instance.new("UIStroke"); bs.Color=Color3.fromRGB(30,70,160); bs.Thickness=1; bs.Parent=ab
+
+    ab.MouseButton1Click:Connect(function()
+        TweenService:Create(ab,TweenInfo.new(0.1),{BackgroundColor3=Color3.fromRGB(30,80,160)}):Play()
+        task.delay(0.15,function() TweenService:Create(ab,TweenInfo.new(0.1),{BackgroundColor3=Color3.fromRGB(18,35,75)}):Play() end)
+        if callback then callback(name) end
+    end)
+    return card
+end
+
+-- ════════════════════════════════════════════
+-- BUILD PAGES
+-- ════════════════════════════════════════════
+
+-- ══════════════════════════════════════
+-- TAB 1: REACH
+-- reach sliders, head reach, auto, prediction, burst limiter, momentum, fingerprint
+-- ══════════════════════════════════════
+local reachPage = makePage("REACH")
+mkSection(reachPage,"MASTER CONTROL","◈")
+mkToggle(reachPage,"Enable Leg Reach","Fire touch events within reach box",false,function(v)
+    S.enabled=v
+    notify("Leg Reach "..(v and "ON" or "OFF"), v and C.green or C.red)
+end)
+mkSpacer(reachPage)
+mkSection(reachPage,"LEG REACH BOX","⬡")
+mkSlider(reachPage,"Reach X  (studs)",0.5,20,S.reachX,0.1,function(v) S.reachX=v; fpBaseX=v end)
+mkSlider(reachPage,"Reach Y  (studs)",0.5,20,S.reachY,0.1,function(v) S.reachY=v; fpBaseY=v end)
+mkSlider(reachPage,"Reach Z  (studs)",0.5,20,S.reachZ,0.1,function(v) S.reachZ=v; fpBaseZ=v end)
+mkSpacer(reachPage)
+mkSection(reachPage,"HEAD REACH","⬆")
+mkToggle(reachPage,"Enable Head Reach","Fire touch from head for headers",false,function(v)
+    S.headReachEnabled=v
+end)
+mkSlider(reachPage,"Head Reach X",0.5,20,S.headReachX,0.1,function(v) S.headReachX=v end)
+mkSlider(reachPage,"Head Reach Y",0.5,20,S.headReachY,0.1,function(v) S.headReachY=v end)
+mkSlider(reachPage,"Head Reach Z",0.5,20,S.headReachZ,0.1,function(v) S.headReachZ=v end)
+mkSpacer(reachPage)
+mkSection(reachPage,"AUTO REACH","⟳")
+mkToggle(reachPage,"Auto-Reach","Activates when ball is within range",false,function(v) S.autoReach=v end)
+mkSlider(reachPage,"Trigger Distance",2,50,S.autoReachDist,0.5,function(v) S.autoReachDist=v end)
+mkSpacer(reachPage)
+mkSection(reachPage,"PREDICTION","⟶")
+mkToggle(reachPage,"Predictive Reach","Pre-fires touch based on trajectory",false,function(v) S.ballPredict=v end)
+mkSlider(reachPage,"Predict Frames Ahead",1,12,S.predictFrames,1,function(v) S.predictFrames=v end)
+mkToggle(reachPage,"Velocity-Based Reach","Extends reach when ball moves fast",false,function(v) S.velocityReach=v end)
+mkSlider(reachPage,"Velocity Multiplier",1.0,5.0,S.velocityMult,0.1,function(v) S.velocityMult=v end)
+mkToggle(reachPage,"Front-Facing Only","Only fires in front of character",false,function(v) S.directional=v end)
+mkSlider(reachPage,"Cone Angle (°)",20,180,S.dirAngle,5,function(v) S.dirAngle=v end)
+mkToggle(reachPage,"Closest Ball Only","Only interact with nearest ball",false,function(v) S.closestOnly=v end)
+mkSpacer(reachPage)
+mkSection(reachPage,"ADVANCED REACH","⚙")
+mkToggle(reachPage,"Momentum Predictor","Shifts reach to where you'll be in 3 frames",false,function(v)
+    S.momentumPredict=v
+    notify("Momentum Predictor "..(v and "ON" or "OFF"), v and C.green or C.red)
+end)
+mkToggle(reachPage,"Burst Limiter","Hard cap on touch events per second",false,function(v)
+    S.burstLimiter=v
+    notify("Burst Limiter "..(v and "ON" or "OFF"), v and C.cyan or C.red)
+end)
+mkSlider(reachPage,"Max Touches/sec",1,20,S.burstMax,1,function(v) S.burstMax=v end)
+mkToggle(reachPage,"Fingerprint Randomiser","Drifts reach values every 30s",false,function(v)
+    S.fingerprintRandomiser=v
+    if not v then S.reachX=fpBaseX; S.reachY=fpBaseY; S.reachZ=fpBaseZ end
+    notify("Fingerprint Randomiser "..(v and "ON" or "OFF"), v and C.purple or C.red)
+end)
+mkSlider(reachPage,"Drift Range (±st)",0.05,1.0,S.fingerprintRange,0.05,function(v) S.fingerprintRange=v end)
+
+-- ══════════════════════════════════════
+-- TAB 2: VISUAL
+-- hitbox, ball ESP, trail, vel arrow, trajectory, GK, highlights, pass, paths, arrow, scoreboard
+-- ══════════════════════════════════════
+local visualPage = makePage("VISUAL")
+mkSection(visualPage,"LEG HITBOX","⬜")
+mkToggle(visualPage,"Show Leg Hitbox","Blue wireframe around legs",false,function(v)
+    S.showHitbox=v
+    if not v then for _,p in ipairs(hitboxParts) do p:Destroy() end; table.clear(hitboxParts) end
+    hitboxDirty=true
+end)
+mkSpacer(visualPage)
+mkSection(visualPage,"BALL","◉")
+mkToggle(visualPage,"Ball Glow Outline","Gold outline that tracks the ball",false,function(v)
+    S.ballESP=v; espDirty=true
+    if not v then for _,sb in pairs(ballSelBoxes) do sb:Destroy() end; table.clear(ballSelBoxes) end
+end)
+mkToggle(visualPage,"Ball Trail","0.5s motion trail behind the ball",false,function(v)
+    S.ballTrail=v
+    if not v and ballTrailInst then ballTrailInst:Destroy(); ballTrailInst=nil end
+end)
+mkToggle(visualPage,"Velocity Vector Arrow","Neon arrow showing ball direction + speed",false,function(v)
+    S.velocityArrow=v
+    if not v and velArrowPart then velArrowPart:Destroy(); velArrowPart=nil end
+end)
+mkToggle(visualPage,"Ball Velocity Line","Trajectory arc showing ball's path",false,function(v)
+    S.trajEnabled=v
+    if not v then for _,p in ipairs(trajParts) do p:Destroy() end; table.clear(trajParts) end
+end)
+mkSlider(visualPage,"Arc Segments",5,40,S.trajSegments,1,function(v) S.trajSegments=v end)
+mkToggle(visualPage,"GK Landing Predictor","Marks where ball will land near goal",false,function(v)
+    S.gkPredictor=v
+    if not v and gkMarker then gkMarker:Destroy(); gkMarker=nil end
+end)
+mkSpacer(visualPage)
+mkSection(visualPage,"PLAYERS","👥")
+mkToggle(visualPage,"Team Highlight","Green = team, Red = enemy",false,function(v)
+    S.playerHighlight=v
+    if not v then for _,h in pairs(playerHighlights) do h:Destroy() end; table.clear(playerHighlights) end
+    highlightDirty=true
+end)
+mkToggle(visualPage,"Player Path Lines","1s movement trail behind each player",false,function(v)
+    S.pathLines=v
+    if not v then
+        for _,d in pairs(pathData) do for _,p in ipairs(d.parts) do p:Destroy() end end
+        table.clear(pathData)
+    end
+end)
+mkToggle(visualPage,"Pass Predictor","Line from nearest enemy to nearest teammate",false,function(v)
+    S.passPredictor=v
+    if not v then for _,p in ipairs(passParts) do p:Destroy() end; table.clear(passParts) end
+end)
+mkSpacer(visualPage)
+mkSection(visualPage,"HUD OVERLAYS","◧")
+mkToggle(visualPage,"Arrow to Ball","Edge arrow pointing at nearest ball",false,function(v)
+    S.ballArrow=v
+    if ballArrowFrame then ballArrowFrame.Visible=v end
+end)
+mkToggle(visualPage,"Ball Magnet Indicator","Arrow pulses when ball is in reach range",false,function(v)
+    S.magnetIndicator=v
+end)
+mkToggle(visualPage,"Mini Scoreboard","Floating player proximity list near ball",false,function(v)
+    S.miniScoreboard=v
+    if miniScoreFrame then miniScoreFrame.Visible=v end
+end)
+mkSpacer(visualPage)
+mkSection(visualPage,"BALL AWARENESS","🎯")
+mkToggle(visualPage,"Ball Landing Zone","Ground circle below ball, scales with height",false,function(v)
+    S.landingZone=v
+    if not v and landingZonePart then landingZonePart.Transparency=1 end
+end)
+mkToggle(visualPage,"Ball Velocity Colour","ESP outline: green=slow gold=mid red=fast",false,function(v)
+    S.ballVelColor=v
+end)
+mkSpacer(visualPage)
+mkSection(visualPage,"ENEMY TRACKING","👁")
+mkToggle(visualPage,"Last Seen Ghost","Faded marker at enemy last position for 3s",false,function(v)
+    S.lastSeenGhost=v
+    if not v then
+        for _,d in pairs(lastSeenData) do if d.part then d.part:Destroy() end end
+        table.clear(lastSeenData)
+    end
+end)
+mkToggle(visualPage,"Danger Zone","Red circle when enemy is closing on you",false,function(v)
+    S.dangerZone=v
+    if not v and dangerZonePart then dangerZonePart.Transparency=1 end
+end)
+mkSlider(visualPage,"Danger Radius (st)",4,30,S.dangerRadius,1,function(v) S.dangerRadius=v end)
+mkSpacer(visualPage)
+mkSection(visualPage,"APPEARANCE","◑")
+mkSlider(visualPage,"Window Transparency",0,0.92,0,0.02,function(v)
+    S.guiTransparency=v
+    win.BackgroundTransparency=v
+    titleBar.BackgroundTransparency=v
+    tabBar.BackgroundTransparency=v
+    statusBar.BackgroundTransparency=v
+end)
+
+-- ══════════════════════════════════════
+-- TAB 3: CAMERA
+-- zoom, time of day, ambient
+-- ══════════════════════════════════════
+local cameraPage = makePage("CAMERA")
+mkSection(cameraPage,"ZOOM","🔭")
+mkToggle(cameraPage,"Unlock Camera Zoom","Remove max zoom distance limit",false,function(v)
+    S.zoomEnabled=v
+    pcall(function() player.CameraMaxZoomDistance = v and S.zoomMax or 128 end)
+    notify("Infinite Zoom "..(v and "ON" or "OFF"), v and C.cyan or C.red)
+end)
+mkSlider(cameraPage,"Max Zoom Distance",50,2000,S.zoomMax,10,function(v)
+    S.zoomMax=v
+    if S.zoomEnabled then pcall(function() player.CameraMaxZoomDistance=v end) end
+end)
+mkSpacer(cameraPage)
+mkSection(cameraPage,"ENVIRONMENT","🌤")
+mkToggle(cameraPage,"Time of Day Control","Lock game time to your chosen hour",false,function(v)
+    S.timeEnabled=v
+    if not v then Lighting.ClockTime=origTimeOfDay end
+end)
+mkSlider(cameraPage,"Time of Day (hour)",0,24,S.timeOfDay,0.5,function(v)
+    S.timeOfDay=v
+    if S.timeEnabled then Lighting.ClockTime=v end
+end)
+mkSpacer(cameraPage)
+mkToggle(cameraPage,"Ambient Light Boost","Brightens dark maps locally only",false,function(v)
+    S.ambientEnabled=v
+    if not v then Lighting.Ambient=origLightingAmb; Lighting.OutdoorAmbient=origOutdoorAmb end
+end)
+mkSlider(cameraPage,"Brightness Multiplier",1,5,S.ambientBrightness,0.1,function(v)
+    S.ambientBrightness=v
+    if S.ambientEnabled then
+        local b=math.min(255,math.floor(255*(v-1)/4))
+        Lighting.Ambient=Color3.fromRGB(b,b,b); Lighting.OutdoorAmbient=Color3.fromRGB(b,b,b)
+    end
+end)
+
+-- ══════════════════════════════════════
+-- TAB 4: PLAYER
+-- desync, performance mode
+-- ══════════════════════════════════════
+local playerPage = makePage("PLAYER")
+mkSection(playerPage,"POSITION DESYNC","⟨⟩")
+mkToggle(playerPage,"Position Desync","Sends false position to others",false,function(v)
+    S.desyncEnabled=v
+    notify("Desync "..(v and "ON" or "OFF"), v and C.orange or C.red)
+end)
+mkSlider(playerPage,"Desync Strength (studs)",0.5,8.0,S.desyncStrength,0.5,function(v) S.desyncStrength=v end)
+mkSpacer(playerPage)
+mkSection(playerPage,"PERFORMANCE","⚙")
+mkToggle(playerPage,"Performance Mode","Halves visual update rates for low-end PCs",false,function(v)
+    S.perfMode=v; S.visualThrottle=v and 2 or 1
+    S.disableTrajPerf=v; S.disableGKPerf=v
+    if v then
+        for _,p in ipairs(trajParts) do p:Destroy() end; table.clear(trajParts)
+        if gkMarker then gkMarker:Destroy(); gkMarker=nil end
+    end
+    notify("Performance Mode "..(v and "ON" or "OFF"), v and C.orange or C.green)
+end)
+
+-- ══════════════════════════════════════
+-- TAB 5: STEALTH
+-- randomise reach, timing, fake lag, human pattern, auto-disable, whitelist, cooldown
+-- ══════════════════════════════════════
+local stealthPage = makePage("STEALTH")
+mkSection(stealthPage,"REACH VARIANCE","⟐")
+mkToggle(stealthPage,"Randomise Reach","Random variance per frame",false,function(v) S.randomizeReach=v end)
+mkSlider(stealthPage,"Random Range",0,3.0,S.randomRange,0.1,function(v) S.randomRange=v end)
+mkSpacer(stealthPage)
+mkSection(stealthPage,"TIMING VARIANCE","⏱")
+mkToggle(stealthPage,"Randomise Delay","Micro-delays on touch events",false,function(v) S.randomizeDelay=v end)
+mkToggle(stealthPage,"Fake Lag","Mimics network jitter",false,function(v) S.fakeLag=v end)
+mkSlider(stealthPage,"Lag Min (s)",0,0.1,S.fakeLagMin,0.005,function(v) S.fakeLagMin=v end)
+mkSlider(stealthPage,"Lag Max (s)",0,0.25,S.fakeLagMax,0.005,function(v) S.fakeLagMax=v end)
+mkToggle(stealthPage,"Human Pattern","Natural foot contact timing",false,function(v) S.humanPattern=v end)
+mkSpacer(stealthPage)
+mkSection(stealthPage,"TRIGGERS","⚑")
+mkToggle(stealthPage,"Auto-Disable on Admin","Turns off reach when admin joins",true,function(v) S.autoDisableAdmin=v end)
+mkToggle(stealthPage,"Whitelist Mode","Only fire reach vs specific players",false,function(v) S.whitelistMode=v end)
+mkSpacer(stealthPage)
+mkSection(stealthPage,"COOLDOWN","◷")
+mkToggle(stealthPage,"Cooldown","Rate-limit reach firing",false,function(v) S.cooldownEnabled=v end)
+mkSlider(stealthPage,"Cooldown Time (s)",0.05,2.0,S.cooldownTime,0.05,function(v) S.cooldownTime=v end)
+
+-- ══════════════════════════════════════
+-- TAB 6: HUB
+-- watermark, clock, server info, rainbow, session log, profiles, keybinds, rejoin
+-- ══════════════════════════════════════
+local hubPage = makePage("HUB")
+mkSection(hubPage,"COSMETICS","✨")
+mkToggle(hubPage,"Custom Watermark","Shows username + hub name top-centre",false,function(v)
+    S.watermarkEnabled=v
+    task.defer(function() if watermarkLabel then watermarkLabel.Visible=v end end)
+end)
+mkToggle(hubPage,"Rainbow Mode","Cycles UI accent colour through spectrum",false,function(v)
+    S.rainbowMode=v
+    if not v then
+        -- restore default accent
+        C.accent=Color3.fromRGB(99,155,255)
+    end
+    notify("Rainbow Mode "..(v and "ON" or "OFF"), v and C.purple or C.text2)
+end)
+mkSpacer(hubPage)
+mkSection(hubPage,"OVERLAYS","◧")
+mkToggle(hubPage,"Show Clock","Draggable real-time clock + session timer",false,function(v)
+    S.clockEnabled=v
+    task.defer(function() if clockFrame then clockFrame.Visible=v end end)
+end)
+mkToggle(hubPage,"Server Info Panel","Shows server ID, ping, players, age",false,function(v)
+    S.serverInfoEnabled=v
+    task.defer(function() if serverInfoFrame then serverInfoFrame.Visible=v end end)
+end)
+mkSpacer(hubPage)
+mkSection(hubPage,"PRESETS","◉")
+local function applyProfile(name)
+    local prof=S.profiles[name]; if not prof then return end
+    for k,v in pairs(prof) do S[k]=v end
+    S.activeProfile=name
+    notify("Profile: "..name, C.purple)
+end
+mkProfileBtn(hubPage,"Default",applyProfile)
+mkProfileBtn(hubPage,"Stealth",applyProfile)
+mkProfileBtn(hubPage,"Aggressive",applyProfile)
+mkSpacer(hubPage)
+mkSection(hubPage,"KEYBINDS","⌨")
+local toggleKeyRef={S.toggleKey}; local guiKeyRef={S.guiKey}
+mkKeybind(hubPage,"Toggle Reach",toggleKeyRef,function(k) S.toggleKey=k end)
+mkKeybind(hubPage,"Open / Close GUI",guiKeyRef,function(k) S.guiKey=k end)
+mkSpacer(hubPage)
+mkSection(hubPage,"TRACKING","📊")
+mkToggle(hubPage,"Enable Stats","Count touches and log events",true,function(v) S.trackStats=v end)
+mkSpacer(hubPage)
+mkSection(hubPage,"SESSION LOG","📋")
+local logCard=mkCard(hubPage,200)
+local logScroll=Instance.new("ScrollingFrame")
+logScroll.Size=UDim2.new(1,-16,1,-10); logScroll.Position=UDim2.new(0,8,0,5)
+logScroll.BackgroundTransparency=1; logScroll.BorderSizePixel=0
+logScroll.ScrollBarThickness=2; logScroll.ScrollBarImageColor3=C.accent
+logScroll.CanvasSize=UDim2.new(0,0,0,0); pcall(function() logScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y end)
+logScroll.ZIndex=14; logScroll.Parent=logCard
+local logLL=Instance.new("UIListLayout"); logLL.Padding=UDim.new(0,2); logLL.Parent=logScroll
+local logEntries={}
+
+local function refreshLog()
+    for _,v in ipairs(logEntries) do v:Destroy() end; table.clear(logEntries)
+    for _,e in ipairs(S.sessionLog) do
+        local r=Instance.new("TextLabel")
+        r.Size=UDim2.new(1,0,0,16); r.BackgroundTransparency=1
+        r.Text="["..e.time.."]  "..e.msg; r.TextColor3=C.text2
+        r.TextSize=10; r.Font=Enum.Font.Code
+        r.TextXAlignment=Enum.TextXAlignment.Left; r.ZIndex=15; r.Parent=logScroll
+        table.insert(logEntries,r)
+    end
+end
+
+local clearCard=mkCard(hubPage,40)
+local clrBtn=Instance.new("TextButton")
+clrBtn.Size=UDim2.new(1,-24,0,28); clrBtn.Position=UDim2.new(0,12,0.5,-14)
+clrBtn.BackgroundColor3=Color3.fromRGB(65,14,14); clrBtn.Text="CLEAR LOG"
+clrBtn.TextColor3=C.red; clrBtn.TextSize=11; clrBtn.Font=Enum.Font.GothamBold
+clrBtn.BorderSizePixel=0; clrBtn.ZIndex=14; clrBtn.Parent=clearCard
+Instance.new("UICorner",clrBtn).CornerRadius=UDim.new(0,8)
+clrBtn.MouseButton1Click:Connect(function()
+    table.clear(S.sessionLog); S.touchCount=0; refreshLog()
+    notify("Log cleared", C.red)
+end)
+mkSpacer(hubPage)
+mkSection(hubPage,"SERVER","🌐")
+local rejoinCard=mkCard(hubPage,46)
+local rejoinBtn=Instance.new("TextButton")
+rejoinBtn.Size=UDim2.new(1,-24,0,30); rejoinBtn.Position=UDim2.new(0,12,0.5,-15)
+rejoinBtn.BackgroundColor3=Color3.fromRGB(15,35,70); rejoinBtn.Text="↩  REJOIN THIS SERVER"
+rejoinBtn.TextColor3=C.accent; rejoinBtn.TextSize=12; rejoinBtn.Font=Enum.Font.GothamBold
+rejoinBtn.BorderSizePixel=0; rejoinBtn.ZIndex=14; rejoinBtn.Parent=rejoinCard
+Instance.new("UICorner",rejoinBtn).CornerRadius=UDim.new(0,8)
+local rjStroke=Instance.new("UIStroke"); rjStroke.Color=C.border; rjStroke.Thickness=1; rjStroke.Parent=rejoinBtn
+rejoinBtn.MouseButton1Click:Connect(function()
+    notify("Rejoining…", C.gold)
+    task.delay(0.5,function()
+        pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId,game.JobId,player) end)
+    end)
+end)
+
+-- ── CREDITS ───────────────────────────────
+local creditsPage = makePage("CREDITS")
+
+local credCard = mkCard(creditsPage, 120)
+
+local credLogo = Instance.new("TextLabel")
+credLogo.Size               = UDim2.new(1,0,0,44)
+credLogo.Position           = UDim2.new(0,0,0,10)
+credLogo.BackgroundTransparency = 1
+credLogo.Text               = "⚔"
+credLogo.TextColor3         = C.accent
+credLogo.TextSize           = 36
+credLogo.Font               = Enum.Font.GothamBold
+credLogo.ZIndex             = 14
+credLogo.Parent             = credCard
+
+local credTitle = Instance.new("TextLabel")
+credTitle.Size               = UDim2.new(1,0,0,20)
+credTitle.Position           = UDim2.new(0,0,0,54)
+credTitle.BackgroundTransparency = 1
+credTitle.Text               = "WRAITH MPS HUB  v6.0"
+credTitle.TextColor3         = C.text0
+credTitle.TextSize           = 14
+credTitle.Font               = Enum.Font.GothamBold
+credTitle.ZIndex             = 14
+credTitle.Parent             = credCard
+
+local credSub = Instance.new("TextLabel")
+credSub.Size               = UDim2.new(1,0,0,16)
+credSub.Position           = UDim2.new(0,0,0,76)
+credSub.BackgroundTransparency = 1
+credSub.Text               = "Advanced Football Control Suite"
+credSub.TextColor3         = C.text2
+credSub.TextSize           = 11
+credSub.Font               = Enum.Font.Gotham
+credSub.ZIndex             = 14
+credSub.Parent             = credCard
+
+mkSpacer(creditsPage)
+mkSection(creditsPage,"DEVELOPER","◈")
+
+local devCard = mkCard(creditsPage, 58)
+
+local devLabel = Instance.new("TextLabel")
+devLabel.Size               = UDim2.new(1,-24,0,20)
+devLabel.Position           = UDim2.new(0,14,0,10)
+devLabel.BackgroundTransparency = 1
+devLabel.Text               = "Created and developed by"
+devLabel.TextColor3         = C.text1
+devLabel.TextSize           = 12
+devLabel.Font               = Enum.Font.Gotham
+devLabel.TextXAlignment     = Enum.TextXAlignment.Left
+devLabel.ZIndex             = 14
+devLabel.Parent             = devCard
+
+local devName = Instance.new("TextLabel")
+devName.Size               = UDim2.new(1,-24,0,22)
+devName.Position           = UDim2.new(0,14,0,30)
+devName.BackgroundTransparency = 1
+devName.Text               = "@1463705"
+devName.TextColor3         = C.accent
+devName.TextSize           = 16
+devName.Font               = Enum.Font.GothamBold
+devName.TextXAlignment     = Enum.TextXAlignment.Left
+devName.ZIndex             = 14
+devName.Parent             = devCard
+
+
+-- ════════════════════════════════════════════
+-- TAB SWITCHING
+-- ════════════════════════════════════════════
+local tabBtns={}; local activeTab="REACH"
+
+local function switchTab(name)
+    activeTab=name
+    for tn,page in pairs(pages) do page.Visible=(tn==name) end
+    for tn,btn in pairs(tabBtns) do
+        local on=(tn==name)
+        TweenService:Create(btn,TweenInfo.new(0.15),{
+            TextColor3       = on and C.text0 or C.text2,
+            BackgroundColor3 = on and Color3.fromRGB(18,22,45) or C.bg0,
+        }):Play()
+        -- active indicator line
+        if btn:FindFirstChild("Indicator") then
+            btn.Indicator.BackgroundTransparency = on and 0 or 1
+        end
+    end
+end
+
+local tabW = math.floor(WIN_W / #TAB_NAMES)
+for _,tName in ipairs(TAB_NAMES) do
+    local btn=Instance.new("TextButton")
+    btn.Name=tName; btn.Size=UDim2.new(0,tabW,1,0)
+    btn.BackgroundColor3=C.bg0; btn.Text=tName
+    btn.TextColor3=C.text2; btn.TextSize=8
+    btn.Font=Enum.Font.GothamBold; btn.BorderSizePixel=0
+    btn.ZIndex=12; btn.Parent=tabBar
+    tabBtns[tName]=btn
+
+    -- active indicator bar at top
+    local ind=Instance.new("Frame")
+    ind.Name="Indicator"; ind.Size=UDim2.new(0.7,0,0,2)
+    ind.Position=UDim2.new(0.15,0,0,0)
+    ind.BackgroundColor3=C.accent; ind.BorderSizePixel=0
+    ind.BackgroundTransparency=1; ind.ZIndex=13; ind.Parent=btn
+    Instance.new("UICorner",ind).CornerRadius=UDim.new(1,0)
+
+    btn.MouseButton1Click:Connect(function() switchTab(tName) end)
+end
+switchTab("REACH")
+
+-- ════════════════════════════════════════════
+-- MINIMISE / CLOSE
+-- ════════════════════════════════════════════
+local minimised=false
+minBtn.MouseButton1Click:Connect(function()
+    minimised=not minimised
+    local h=minimised and 56 or WIN_H
+    TweenService:Create(win,TweenInfo.new(0.22,Enum.EasingStyle.Quart),{Size=UDim2.new(0,WIN_W,0,h)}):Play()
+    minBtn.Text=minimised and "▭" or "─"
+    tabBar.Visible=not minimised; contentArea.Visible=not minimised; statusBar.Visible=not minimised
+end)
+closeBtn.MouseButton1Click:Connect(function() win.Visible=false end)
+
+-- ════════════════════════════════════════════
+-- DRAG
+-- ════════════════════════════════════════════
+local dragging,dragOrig,winOrig=false,nil,nil
+titleBar.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 then
+        dragging=true; dragOrig=i.Position; winOrig=win.Position
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if dragging and i.UserInputType==Enum.UserInputType.MouseMovement then
+        local d=i.Position-dragOrig
+        win.Position=UDim2.new(winOrig.X.Scale,winOrig.X.Offset+d.X,winOrig.Y.Scale,winOrig.Y.Offset+d.Y)
+    end
+end)
+
+-- ════════════════════════════════════════════
+-- GLOBAL KEYBINDS
+-- ════════════════════════════════════════════
+UserInputService.InputBegan:Connect(function(input,gp)
+    if gp then return end
+    if input.KeyCode==S.guiKey then
+        win.Visible=not win.Visible
+        if win.Visible then win.Position=UDim2.new(0.5,-WIN_W/2,0.5,-WIN_H/2) end
+    elseif input.KeyCode==S.toggleKey then
+        S.enabled=not S.enabled
+        notify("Leg Reach "..(S.enabled and "ON" or "OFF"), S.enabled and C.green or C.red)
+    end
+end)
+
+-- ════════════════════════════════════════════
+-- HUD OVERLAYS
+-- ════════════════════════════════════════════
+
+-- ── CLOCK WIDGET ──────────────────────────
+local clockFrame = Instance.new("Frame")
+clockFrame.Name             = "WraithClock"
+clockFrame.Size             = UDim2.new(0,110,0,40)
+clockFrame.Position         = UDim2.new(1,-126,0,16)
+clockFrame.BackgroundColor3 = C.bg1
+clockFrame.BackgroundTransparency = 0.1
+clockFrame.BorderSizePixel  = 0; clockFrame.ZIndex=60; clockFrame.Visible=false
+clockFrame.Parent           = SG
+Instance.new("UICorner",clockFrame).CornerRadius=UDim.new(0,10)
+local ckStroke=Instance.new("UIStroke"); ckStroke.Color=C.border; ckStroke.Thickness=1; ckStroke.Parent=clockFrame
+
+local clockTimeLbl=Instance.new("TextLabel")
+clockTimeLbl.Size=UDim2.new(1,0,0,22); clockTimeLbl.Position=UDim2.new(0,0,0,4)
+clockTimeLbl.BackgroundTransparency=1; clockTimeLbl.Text="00:00:00"
+clockTimeLbl.TextColor3=C.text0; clockTimeLbl.TextSize=14; clockTimeLbl.Font=Enum.Font.GothamBold
+clockTimeLbl.ZIndex=61; clockTimeLbl.Parent=clockFrame
+
+local clockSessionLbl=Instance.new("TextLabel")
+clockSessionLbl.Size=UDim2.new(1,0,0,12); clockSessionLbl.Position=UDim2.new(0,0,0,26)
+clockSessionLbl.BackgroundTransparency=1; clockSessionLbl.Text="session 0s"
+clockSessionLbl.TextColor3=C.text2; clockSessionLbl.TextSize=9; clockSessionLbl.Font=Enum.Font.Gotham
+clockSessionLbl.ZIndex=61; clockSessionLbl.Parent=clockFrame
+
+-- Drag clock
+local ckDrag,ckDragOrig,ckPosOrig=false,nil,nil
+clockFrame.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 then
+        ckDrag=true; ckDragOrig=i.Position; ckPosOrig=clockFrame.Position
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 then ckDrag=false end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if ckDrag and i.UserInputType==Enum.UserInputType.MouseMovement then
+        local d=i.Position-ckDragOrig
+        clockFrame.Position=UDim2.new(ckPosOrig.X.Scale,ckPosOrig.X.Offset+d.X,
+                                       ckPosOrig.Y.Scale,ckPosOrig.Y.Offset+d.Y)
+    end
+end)
+
+-- ── BALL ARROW ────────────────────────────
+-- Edge arrow that rotates to point at nearest ball
+ballArrowFrame = Instance.new("Frame")
+ballArrowFrame.Name             = "WraithBallArrow"
+ballArrowFrame.Size             = UDim2.new(0,36,0,36)
+ballArrowFrame.AnchorPoint      = Vector2.new(0.5,0.5)
+ballArrowFrame.BackgroundTransparency = 1
+ballArrowFrame.BorderSizePixel  = 0; ballArrowFrame.ZIndex=70
+ballArrowFrame.Visible          = false; ballArrowFrame.Parent=SG
+
+local arrowTri=Instance.new("TextLabel")
+arrowTri.Size=UDim2.new(1,0,1,0); arrowTri.BackgroundTransparency=1
+arrowTri.Text="▲"; arrowTri.TextColor3=C.gold; arrowTri.TextSize=28
+arrowTri.Font=Enum.Font.GothamBold; arrowTri.ZIndex=71; arrowTri.Parent=ballArrowFrame
+
+local arrowLabel=Instance.new("TextLabel")
+arrowLabel.Size=UDim2.new(0,50,0,14); arrowLabel.AnchorPoint=Vector2.new(0.5,0)
+arrowLabel.Position=UDim2.new(0.5,0,1,2); arrowLabel.BackgroundTransparency=1
+arrowLabel.Text="BALL"; arrowLabel.TextColor3=C.gold; arrowLabel.TextSize=9
+arrowLabel.Font=Enum.Font.GothamBold; arrowLabel.ZIndex=71; arrowLabel.Parent=ballArrowFrame
+
+-- ── MINI SCOREBOARD ───────────────────────
+miniScoreFrame = Instance.new("Frame")
+miniScoreFrame.Name             = "WraithScore"
+miniScoreFrame.Size             = UDim2.new(0,160,0,20)  -- auto-grows
+miniScoreFrame.Position         = UDim2.new(1,-176,0.5,-80)
+miniScoreFrame.BackgroundColor3 = C.bg1
+miniScoreFrame.BackgroundTransparency = 0.08
+miniScoreFrame.BorderSizePixel  = 0; miniScoreFrame.ZIndex=60
+miniScoreFrame.ClipsDescendants = false; miniScoreFrame.Visible=false
+miniScoreFrame.Parent           = SG
+pcall(function() miniScoreFrame.AutomaticSize = Enum.AutomaticSize.Y end)
+Instance.new("UICorner",miniScoreFrame).CornerRadius=UDim.new(0,10)
+local msStroke=Instance.new("UIStroke"); msStroke.Color=C.border; msStroke.Thickness=1; msStroke.Parent=miniScoreFrame
+
+local msTitle=Instance.new("TextLabel")
+msTitle.Size=UDim2.new(1,0,0,18); msTitle.Position=UDim2.new(0,0,0,0)
+msTitle.BackgroundTransparency=1; msTitle.Text="⚔  NEAR BALL"
+msTitle.TextColor3=C.accent; msTitle.TextSize=9; msTitle.Font=Enum.Font.GothamBold
+msTitle.ZIndex=61; msTitle.Parent=miniScoreFrame
+
+local msListFrame=Instance.new("Frame")
+msListFrame.Size=UDim2.new(1,0,0,0); msListFrame.Position=UDim2.new(0,0,0,20)
+msListFrame.BackgroundTransparency=1; msListFrame.BorderSizePixel=0; msListFrame.ZIndex=61
+pcall(function() msListFrame.AutomaticSize=Enum.AutomaticSize.Y end); msListFrame.Parent=miniScoreFrame
+local msLL=Instance.new("UIListLayout"); msLL.Padding=UDim.new(0,1); msLL.Parent=msListFrame
+local msRows={}
+
+-- Drag mini scoreboard
+local msDrag,msDragOrig,msPosOrig=false,nil,nil
+miniScoreFrame.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 then
+        msDrag=true; msDragOrig=i.Position; msPosOrig=miniScoreFrame.Position
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 then msDrag=false end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if msDrag and i.UserInputType==Enum.UserInputType.MouseMovement then
+        local d=i.Position-msDragOrig
+        miniScoreFrame.Position=UDim2.new(msPosOrig.X.Scale,msPosOrig.X.Offset+d.X,
+                                           msPosOrig.Y.Scale,msPosOrig.Y.Offset+d.Y)
+    end
+end)
+
+-- ════════════════════════════════════════════
+-- ADD CLOCK TOGGLE TO EXTRA PAGE (deferred)
+-- ════════════════════════════════════════════
+-- (clock toggle inserted into EXTRA page inline earlier via mkToggle reference)
+
+-- ── WATERMARK ─────────────────────────────
+watermarkLabel = Instance.new("TextLabel")
+watermarkLabel.Name             = "WraithWatermark"
+watermarkLabel.Size             = UDim2.new(0,300,0,20)
+watermarkLabel.AnchorPoint      = Vector2.new(0.5,0)
+watermarkLabel.Position         = UDim2.new(0.5,0,0,6)
+watermarkLabel.BackgroundTransparency = 1
+watermarkLabel.Text             = "⚔  WRAITH MPS HUB  v6.0  |  " .. player.Name
+watermarkLabel.TextColor3       = C.accent
+watermarkLabel.TextSize         = 11
+watermarkLabel.Font             = Enum.Font.GothamBold
+watermarkLabel.ZIndex           = 60
+watermarkLabel.Visible          = false
+watermarkLabel.Parent           = SG
+
+-- ── SERVER INFO PANEL ─────────────────────
+serverInfoFrame = Instance.new("Frame")
+serverInfoFrame.Name            = "WraithServerInfo"
+serverInfoFrame.Size            = UDim2.new(0,220,0,90)
+serverInfoFrame.Position        = UDim2.new(0,16,0,16)
+serverInfoFrame.BackgroundColor3 = C.bg1
+serverInfoFrame.BackgroundTransparency = 0.08
+serverInfoFrame.BorderSizePixel = 0; serverInfoFrame.ZIndex=60
+serverInfoFrame.Visible         = false; serverInfoFrame.Parent=SG
+Instance.new("UICorner",serverInfoFrame).CornerRadius=UDim.new(0,10)
+local siStroke=Instance.new("UIStroke"); siStroke.Color=C.border; siStroke.Thickness=1; siStroke.Parent=serverInfoFrame
+
+local siTitle=Instance.new("TextLabel")
+siTitle.Size=UDim2.new(1,0,0,18); siTitle.Position=UDim2.new(0,10,0,4)
+siTitle.BackgroundTransparency=1; siTitle.Text="⚔  SERVER INFO"
+siTitle.TextColor3=C.accent; siTitle.TextSize=9; siTitle.Font=Enum.Font.GothamBold
+siTitle.ZIndex=61; siTitle.TextXAlignment=Enum.TextXAlignment.Left; siTitle.Parent=serverInfoFrame
+
+-- info rows
+local siRows={}
+local siLabels={"Server ID","Region","Players","Server Age","Your ID"}
+for i,lbl in ipairs(siLabels) do
+    local row=Instance.new("TextLabel")
+    row.Size=UDim2.new(1,-16,0,12); row.Position=UDim2.new(0,10,0,18+(i-1)*13)
+    row.BackgroundTransparency=1; row.Text=lbl..":  –"
+    row.TextColor3=C.text2; row.TextSize=9; row.Font=Enum.Font.Code
+    row.ZIndex=61; row.TextXAlignment=Enum.TextXAlignment.Left; row.Parent=serverInfoFrame
+    siRows[i]=row
+end
+
+-- Drag server info
+local siDrag,siDragOrig,siPosOrig=false,nil,nil
+serverInfoFrame.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 then
+        siDrag=true; siDragOrig=i.Position; siPosOrig=serverInfoFrame.Position
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 then siDrag=false end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if siDrag and i.UserInputType==Enum.UserInputType.MouseMovement then
+        local d=i.Position-siDragOrig
+        serverInfoFrame.Position=UDim2.new(siPosOrig.X.Scale,siPosOrig.X.Offset+d.X,
+                                            siPosOrig.Y.Scale,siPosOrig.Y.Offset+d.Y)
+    end
+end)
+
+-- ════════════════════════════════════════════
+local LEG_NAMES={
+    "LL","RL","Left Leg","Right Leg","Fake_LL","FakeRL",
+    "LeftLowerLeg","LeftUpperLeg","RightLowerLeg","RightUpperLeg","LeftFoot","RightFoot"
+}
+local HEAD_NAMES={"Head","head"}
+local legs={}; local heads={}
+
+local function updateLimbs(char)
+    table.clear(legs); table.clear(heads)
+    for _,name in ipairs(LEG_NAMES) do
+        local p=char:FindFirstChild(name,true)
+        if p and p:IsA("BasePart") then table.insert(legs,p) end
+    end
+    for _,name in ipairs(HEAD_NAMES) do
+        local p=char:FindFirstChild(name,true)
+        if p and p:IsA("BasePart") then table.insert(heads,p) end
+    end
+    hitboxDirty = true
+end
+updateLimbs(character)
+player.CharacterAdded:Connect(function(char)
+    character=char; task.wait(1); updateLimbs(char)
+    hitboxDirty = true
+    for _,p in ipairs(hitboxParts) do p:Destroy() end; table.clear(hitboxParts)
+end)
+
+-- ════════════════════════════════════════════
+-- BALL TRACKING
+-- ════════════════════════════════════════════
+local BALL_NAMES={
+    TPS=true,Ball=true,Football=true,SAML=true,SSS=true,
+    RSA=true,IFF=true,MPS=true,Bomb=true,bomb=true,
+    VEF=true,VRF=true,CBM=true,RFF=true,TRS=true
+}
+local balls={}
+local function trackBall(obj)
+    if obj:IsA("BasePart") and BALL_NAMES[obj.Name] then
+        table.insert(balls,obj)
+        espDirty = true
+    end
+end
+for _,obj in ipairs(WS:GetDescendants()) do trackBall(obj) end
+WS.DescendantAdded:Connect(trackBall)
+WS.DescendantRemoving:Connect(function(obj)
+    for i=#balls,1,-1 do
+        if balls[i]==obj then
+            table.remove(balls,i)
+            ballVelocities[obj]=nil; lastBallPositions[obj]=nil
+            if ballSelBoxes[obj] then ballSelBoxes[obj]:Destroy(); ballSelBoxes[obj]=nil end
+            espDirty = true
+        end
+    end
+end)
+
+-- ════════════════════════════════════════════
+-- HITBOX VISUALIZER
+-- ════════════════════════════════════════════
+local function rebuildHitbox()
+    -- Only rebuild when legs actually changed, not every frame
+    if not hitboxDirty and #hitboxParts > 0 then return end
+    hitboxDirty = false
+    for _,p in ipairs(hitboxParts) do p:Destroy() end; table.clear(hitboxParts)
+    if not S.showHitbox then return end
+    for _,leg in ipairs(legs) do
+        if leg and leg.Parent then
+            local sb=Instance.new("SelectionBox")
+            sb.Adornee=leg; sb.Color3=C.accent; sb.LineThickness=0.03
+            sb.SurfaceTransparency=0.84; sb.SurfaceColor3=C.accent; sb.Parent=WS
+            table.insert(hitboxParts,sb)
+        end
+    end
+end
+
+-- ════════════════════════════════════════════
+-- BALL ESP
+-- ════════════════════════════════════════════
+local function updateBallESP()
+    if not S.ballESP then return end
+    -- Only do the full loop when balls list has changed
+    if not espDirty then return end
+    espDirty = false
+    for _,ball in ipairs(balls) do
+        if ball and ball.Parent and not ballSelBoxes[ball] then
+            local sb=Instance.new("SelectionBox")
+            sb.Adornee=ball; sb.Color3=C.gold; sb.LineThickness=0.07
+            sb.SurfaceTransparency=0.7; sb.SurfaceColor3=C.gold; sb.Parent=WS
+            ballSelBoxes[ball]=sb
+        end
+    end
+    for ball,sb in pairs(ballSelBoxes) do
+        if not ball or not ball.Parent then sb:Destroy(); ballSelBoxes[ball]=nil end
+    end
+end
+
+-- ════════════════════════════════════════════
+-- PLAYER HIGHLIGHT (uses Highlight instance)
+-- ════════════════════════════════════════════
+local function updatePlayerHighlights()
+    if not S.playerHighlight then return end
+    if not highlightDirty then return end
+    highlightDirty = false
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=player and p.Character then
+            if not playerHighlights[p] then
+                local ok_h, h = pcall(Instance.new, "Highlight")
+                if ok_h and h then
+                    h.FillTransparency=0.75; h.OutlineTransparency=0.1
+                    pcall(function() h.DepthMode=Enum.HighlightDepthMode.Occluded end)
+                    h.Parent=p.Character
+                    playerHighlights[p]=h
+                end
+            end
+            local col
+            if player.Team and p.Team then
+                col=p.Team==player.Team and S.teamColor or S.enemyColor
+            else
+                col=S.enemyColor
+            end
+            playerHighlights[p].FillColor=col
+            playerHighlights[p].OutlineColor=col
+        end
+    end
+    for p,h in pairs(playerHighlights) do
+        if not p or not p.Parent or not p.Character then
+            h:Destroy(); playerHighlights[p]=nil
+        end
+    end
+end
+Players.PlayerAdded:Connect(function() highlightDirty = true end)
+Players.PlayerRemoving:Connect(function(p)
+    highlightDirty = true
+    if playerHighlights[p] then playerHighlights[p]:Destroy(); playerHighlights[p]=nil end
+end)
+
+-- ════════════════════════════════════════════
+-- TRAJECTORY LINE
+-- ════════════════════════════════════════════
+local function clearTraj()
+    for _,p in ipairs(trajParts) do p:Destroy() end; table.clear(trajParts)
+end
+
+local function updateTrajectory(ball)
+    if not S.trajEnabled or not ball or not ball.Parent then clearTraj(); return end
+    local vel=ballVelocities[ball]
+    if not vel or vel.Magnitude<0.5 then clearTraj(); return end
+
+    local segs=math.floor(S.trajSegments)
+    local dt=0.06
+    local grav=Vector3.new(0,-GRAVITY,0)
+    local points={}
+    local pos=ball.Position; local v=vel
+    for i=1,segs+1 do
+        table.insert(points,pos)
+        v=v+grav*dt; pos=pos+v*dt
+    end
+
+    while #trajParts<segs do
+        local p=Instance.new("Part")
+        p.Anchored=true; p.CanCollide=false; p.CastShadow=false
+        p.Material=Enum.Material.Neon; p.Size=Vector3.new(0.07,0.07,1)
+        p.Color=S.trajColor; p.Parent=WS
+        table.insert(trajParts,p)
+    end
+    while #trajParts>segs do trajParts[#trajParts]:Destroy(); table.remove(trajParts) end
+
+    for i=1,segs do
+        local a,b=points[i],points[i+1]
+        local mid=(a+b)*0.5; local len=(b-a).Magnitude
+        local fade=1-(i-1)/segs
+        trajParts[i].CFrame=CFrame.new(mid,b)
+        trajParts[i].Size=Vector3.new(0.05,0.05,len)
+        trajParts[i].Color=S.trajColor
+        trajParts[i].Transparency=lerp(0.1,0.94,1-fade)
+    end
+end
+
+-- ════════════════════════════════════════════
+-- GK PREDICTOR
+-- ════════════════════════════════════════════
+local function findGoalPos()
+    local goalKeywords={"Goal","goal","Net","net","GoalPost","goalpost","Frame"}
+    for _,obj in ipairs(WS:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            for _,kw in ipairs(goalKeywords) do
+                if obj.Name:find(kw) then return obj.Position end
+            end
+        end
+    end
+    return nil
+end
+
+local function updateGKPredictor(ball)
+    if not S.gkPredictor or not ball or not ball.Parent then
+        if gkMarker then gkMarker:Destroy(); gkMarker=nil end; return
+    end
+    local vel=ballVelocities[ball]
+    if not vel or vel.Magnitude<1 then return end
+    local goalPos=findGoalPos(); if not goalPos then return end
+    local dt=0.05; local grav=Vector3.new(0,-GRAVITY,0)
+    local pos=ball.Position; local v=vel; local landPos=nil
+    for _=1,120 do
+        v=v+grav*dt; pos=pos+v*dt
+        if (pos-goalPos).Magnitude<6 then landPos=pos; break end
+        if pos.Y<-10 then break end
+    end
+    if not landPos then
+        if gkMarker then gkMarker:Destroy(); gkMarker=nil end; return
+    end
+    if not gkMarker then
+        gkMarker=Instance.new("Part"); gkMarker.Anchored=true; gkMarker.CanCollide=false
+        gkMarker.CastShadow=false; gkMarker.Material=Enum.Material.Neon
+        gkMarker.Shape=Enum.PartType.Ball; gkMarker.Size=Vector3.new(0.65,0.65,0.65)
+        gkMarker.Color=S.gkPredictColor; gkMarker.Transparency=0.15; gkMarker.Parent=WS
+    end
+    gkMarker.Position=landPos
+end
+
+-- ════════════════════════════════════════════
+-- DESYNC
+-- ════════════════════════════════════════════
+local desyncConn=nil
+local function tickDesync()
+    if desyncConn then desyncConn:Disconnect(); desyncConn=nil end
+    if not S.desyncEnabled then return end
+    desyncConn=RunService.RenderStepped:Connect(function()
+        if not S.desyncEnabled then return end
+        local root=character and character:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+        local str=S.desyncStrength
+        local offset=Vector3.new((math.random()-0.5)*2*str,0,(math.random()-0.5)*2*str)
+        root.CFrame=CFrame.new(root.Position+offset)*CFrame.Angles(root.CFrame:ToEulerAnglesXYZ())
+    end)
+end
+
+-- ════════════════════════════════════════════
+-- PASS PREDICTOR  (nearest enemy → nearest teammate of that enemy)
+-- ════════════════════════════════════════════
+local function updatePassPredictor()
+    if not S.passPredictor then
+        for _,p in ipairs(passParts) do p:Destroy() end; table.clear(passParts)
+        return
+    end
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    -- Find nearest enemy to us
+    local nearestEnemy, nearestEnemyDist = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player and p.Character then
+            local isEnemy = true
+            if player.Team and p.Team then isEnemy = p.Team ~= player.Team end
+            if isEnemy then
+                local r = p.Character:FindFirstChild("HumanoidRootPart")
+                if r then
+                    local d = (r.Position - root.Position).Magnitude
+                    if d < nearestEnemyDist then
+                        nearestEnemyDist = d
+                        nearestEnemy = p
+                    end
+                end
+            end
+        end
+    end
+    if not nearestEnemy then
+        for _,p in ipairs(passParts) do p:Destroy() end; table.clear(passParts)
+        return
+    end
+    local eRoot = nearestEnemy.Character:FindFirstChild("HumanoidRootPart")
+    if not eRoot then return end
+
+    -- Find nearest teammate of that enemy (same team as enemy, not the enemy itself)
+    local nearestAlly, nearestAllyDist = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player and p ~= nearestEnemy and p.Character then
+            local sameTeamAsEnemy = false
+            if nearestEnemy.Team and p.Team then
+                sameTeamAsEnemy = p.Team == nearestEnemy.Team
+            else
+                -- no teams: treat everyone else as potential ally
+                sameTeamAsEnemy = true
+            end
+            if sameTeamAsEnemy then
+                local r = p.Character:FindFirstChild("HumanoidRootPart")
+                if r then
+                    local d = (r.Position - eRoot.Position).Magnitude
+                    if d < nearestAllyDist then
+                        nearestAllyDist = d
+                        nearestAlly = p
+                    end
+                end
+            end
+        end
+    end
+    if not nearestAlly then
+        for _,p in ipairs(passParts) do p:Destroy() end; table.clear(passParts)
+        return
+    end
+    local aRoot = nearestAlly.Character:FindFirstChild("HumanoidRootPart")
+    if not aRoot then return end
+
+    -- Draw one line: enemy pos → ally pos
+    local posA = eRoot.Position
+    local posB = aRoot.Position
+    local mid  = (posA + posB) * 0.5
+    local len  = (posB - posA).Magnitude
+
+    if #passParts < 1 then
+        local p = Instance.new("Part")
+        p.Anchored=true; p.CanCollide=false; p.CastShadow=false
+        p.Material=Enum.Material.Neon; p.Size=Vector3.new(0.06,0.06,1)
+        p.Color=C.purple; p.Transparency=0.25; p.Parent=WS
+        table.insert(passParts,p)
+    end
+    while #passParts > 1 do passParts[#passParts]:Destroy(); table.remove(passParts) end
+
+    passParts[1].CFrame = CFrame.new(mid, posB)
+    passParts[1].Size   = Vector3.new(0.06,0.06,len)
+end
+
+
+-- ════════════════════════════════════════════
+-- BALL ARROW  (edge-of-screen indicator)
+-- ════════════════════════════════════════════
+local function updateBallArrow()
+    if not S.ballArrow or not ballArrowFrame then return end
+    local ball = cachedClosestBall
+    if not ball or not ball.Parent then
+        ballArrowFrame.Visible = false; return
+    end
+
+    -- Project ball world pos to screen
+    local screenPos, onScreen = camera:WorldToScreenPoint(ball.Position)
+
+    if onScreen then
+        -- Ball is visible — hide arrow
+        ballArrowFrame.Visible = false
+        return
+    end
+
+    ballArrowFrame.Visible = true
+    local vp     = camera.ViewportSize
+    local cx, cy = vp.X * 0.5, vp.Y * 0.5
+    local margin = 40
+
+    -- Direction from screen centre to projected ball position
+    local dx = screenPos.X - cx
+    local dy = screenPos.Y - cy
+    local angle = math.atan2(dy, dx)
+
+    -- Clamp to screen edge
+    local absDx = math.abs(dx); local absDy = math.abs(dy)
+    local scale  = math.min((cx - margin) / absDx, (cy - margin) / absDy)
+    local ex     = cx + dx * scale
+    local ey     = cy + dy * scale
+
+    ballArrowFrame.Position = UDim2.new(0, ex, 0, ey)
+    arrowTri.Rotation       = math.deg(angle) + 90  -- ▲ points in travel direction
+
+    -- Distance label
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if root then
+        local d = math.floor((ball.Position - root.Position).Magnitude)
+        arrowLabel.Text = d .. "st"
+    end
+end
+
+-- ════════════════════════════════════════════
+-- MINI SCOREBOARD
+-- ════════════════════════════════════════════
+local function updateMiniScoreboard()
+    if not S.miniScoreboard or not miniScoreFrame then return end
+    local ball = cachedClosestBall
+    if not ball or not ball.Parent then return end
+
+    -- Build sorted list of all players by distance to ball
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character then
+            local r = p.Character:FindFirstChild("HumanoidRootPart")
+            if r then
+                local d = math.floor((r.Position - ball.Position).Magnitude)
+                table.insert(list, {name=p.Name, dist=d, isMe=(p==player), team=p.Team})
+            end
+        end
+    end
+    table.sort(list, function(a,b) return a.dist < b.dist end)
+
+    -- Rebuild rows (max 8)
+    for _, r in ipairs(msRows) do r:Destroy() end; table.clear(msRows)
+    local count = math.min(#list, 8)
+    for i = 1, count do
+        local entry = list[i]
+        local row   = Instance.new("TextLabel")
+        row.Size    = UDim2.new(1,0,0,16); row.BackgroundTransparency=1
+        local col   = entry.isMe and C.accent
+                      or (player.Team and entry.team == player.Team and C.green or C.red)
+        local prefix = i == 1 and "🏆 " or (i .. ". ")
+        row.Text    = prefix .. entry.name .. "  " .. entry.dist .. "st"
+        row.TextColor3 = col; row.TextSize=10; row.Font=Enum.Font.GothamMedium
+        row.TextXAlignment=Enum.TextXAlignment.Left; row.ZIndex=62
+        local pad=Instance.new("UIPadding"); pad.PaddingLeft=UDim.new(0,8); pad.Parent=row
+        row.Parent  = msListFrame
+        table.insert(msRows, row)
+    end
+end
+
+-- ════════════════════════════════════════════
+-- FINGERPRINT RANDOMISER
+-- ════════════════════════════════════════════
+local function tickFingerprintRandomiser(dt)
+    if not S.fingerprintRandomiser then return end
+    fingerprintTimer = fingerprintTimer + dt
+    if fingerprintTimer >= 30 then
+        fingerprintTimer = 0
+        local r = S.fingerprintRange
+        S.reachX = fpBaseX + (math.random() * 2 - 1) * r
+        S.reachY = fpBaseY + (math.random() * 2 - 1) * r
+        S.reachZ = fpBaseZ + (math.random() * 2 - 1) * r
+        -- clamp to sane bounds
+        S.reachX = math.clamp(S.reachX, 0.5, 20)
+        S.reachY = math.clamp(S.reachY, 0.5, 20)
+        S.reachZ = math.clamp(S.reachZ, 0.5, 20)
+    end
+end
+
+-- ════════════════════════════════════════════
+-- BALL TRAIL
+-- ════════════════════════════════════════════
+local function updateBallTrail()
+    local ball = cachedClosestBall
+    if not S.ballTrail then
+        if ballTrailInst then ballTrailInst:Destroy(); ballTrailInst=nil end
+        return
+    end
+    if not ball or not ball.Parent then
+        if ballTrailInst then ballTrailInst:Destroy(); ballTrailInst=nil end
+        return
+    end
+    -- Create trail attached to ball if not yet created
+    if not ballTrailInst or not ballTrailInst.Parent then
+        pcall(function()
+            local att0 = ball:FindFirstChild("TrailAtt0") or Instance.new("Attachment")
+            att0.Name="TrailAtt0"; att0.Position=Vector3.new(0,0.5,0); att0.Parent=ball
+            local att1 = ball:FindFirstChild("TrailAtt1") or Instance.new("Attachment")
+            att1.Name="TrailAtt1"; att1.Position=Vector3.new(0,-0.5,0); att1.Parent=ball
+            local trail=Instance.new("Trail")
+            trail.Attachment0=att0; trail.Attachment1=att1
+            trail.Lifetime=0.5; trail.MinLength=0.02; trail.FaceCamera=true
+            trail.Color=ColorSequence.new({
+                ColorSequenceKeypoint.new(0,C.gold),
+                ColorSequenceKeypoint.new(1,Color3.fromRGB(255,80,30)),
+            })
+            trail.Transparency=NumberSequence.new({
+                NumberSequenceKeypoint.new(0,0.1),NumberSequenceKeypoint.new(1,1),
+            })
+            trail.Parent=ball; ballTrailInst=trail
+        end)
+    end
+end
+
+-- ════════════════════════════════════════════
+-- VELOCITY VECTOR ARROW
+-- ════════════════════════════════════════════
+local function updateVelocityArrow()
+    if not S.velocityArrow then
+        if velArrowPart then velArrowPart:Destroy(); velArrowPart=nil end
+        return
+    end
+    local ball = cachedClosestBall
+    if not ball or not ball.Parent then
+        if velArrowPart then velArrowPart:Destroy(); velArrowPart=nil end
+        return
+    end
+    local vel = ballVelocities[ball]
+    if not vel or vel.Magnitude < 0.5 then
+        if velArrowPart then velArrowPart.Transparency=1 end
+        return
+    end
+    if not velArrowPart or not velArrowPart.Parent then
+        velArrowPart = Instance.new("Part")
+        velArrowPart.Anchored=true; velArrowPart.CanCollide=false; velArrowPart.CastShadow=false
+        velArrowPart.Material=Enum.Material.Neon; velArrowPart.Color=C.cyan
+        velArrowPart.Parent=WS
+    end
+    local spd  = vel.Magnitude
+    local len  = math.clamp(spd * 0.25, 0.5, 12)  -- scales with speed
+    local mid  = ball.Position + vel.Unit * (len * 0.5)
+    velArrowPart.Size       = Vector3.new(0.1, 0.1, len)
+    velArrowPart.CFrame     = CFrame.new(mid, ball.Position + vel.Unit * len)
+    velArrowPart.Transparency = 0.1
+    -- Colour shifts: cyan = slow, gold = fast
+    local t = math.clamp(spd / 60, 0, 1)
+    velArrowPart.Color = Color3.fromRGB(
+        math.floor(lerp(55, 255, t)),
+        math.floor(lerp(210, 195, t)),
+        math.floor(lerp(215, 55, t))
+    )
+end
+
+-- ════════════════════════════════════════════
+-- PLAYER PATH LINES
+-- ════════════════════════════════════════════
+local PATH_MAX_POS  = 20    -- store last 20 positions
+local PATH_INTERVAL = 3     -- record position every N frames
+local pathFrameCount = 0
+
+local function updatePathLines(frameNum)
+    pathFrameCount = pathFrameCount + 1
+    -- record positions every PATH_INTERVAL frames
+    local record = pathFrameCount % PATH_INTERVAL == 0
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player and p.Character then
+            local r = p.Character:FindFirstChild("HumanoidRootPart")
+            if r then
+                if not pathData[p] then
+                    pathData[p] = {parts={}, positions={}}
+                end
+                local d = pathData[p]
+
+                if record then
+                    table.insert(d.positions, 1, r.Position)
+                    if #d.positions > PATH_MAX_POS then table.remove(d.positions) end
+                end
+
+                if not S.pathLines then
+                    for _,pt in ipairs(d.parts) do pt:Destroy() end
+                    table.clear(d.parts); table.clear(d.positions)
+                else
+                    -- ensure enough parts
+                    local needed = math.max(0, #d.positions - 1)
+                    while #d.parts < needed do
+                        local pt=Instance.new("Part")
+                        pt.Anchored=true; pt.CanCollide=false; pt.CastShadow=false
+                        pt.Material=Enum.Material.Neon
+                        pt.Size=Vector3.new(0.06,0.06,1); pt.Parent=WS
+                        table.insert(d.parts,pt)
+                    end
+                    while #d.parts > needed do
+                        d.parts[#d.parts]:Destroy(); table.remove(d.parts)
+                    end
+                    -- determine colour
+                    local col = C.red
+                    if player.Team and p.Team then
+                        col = p.Team == player.Team and C.green or C.red
+                    end
+                    -- position parts between consecutive recorded positions
+                    for i = 1, needed do
+                        local a = d.positions[i]
+                        local b = d.positions[i+1]
+                        local mid = (a+b)*0.5
+                        local len = (b-a).Magnitude
+                        local fade = 1 - (i-1)/(PATH_MAX_POS)
+                        d.parts[i].CFrame = CFrame.new(mid,b)
+                        d.parts[i].Size   = Vector3.new(0.05,0.05,math.max(len,0.05))
+                        d.parts[i].Color  = col
+                        d.parts[i].Transparency = lerp(0.1, 0.95, 1-fade)
+                    end
+                end
+            end
+        end
+    end
+    -- clean up players who left
+    for p, d in pairs(pathData) do
+        if not p or not p.Parent then
+            for _,pt in ipairs(d.parts) do pt:Destroy() end
+            pathData[p]=nil
+        end
+    end
+end
+
+-- ════════════════════════════════════════════
+-- RAINBOW MODE
+-- ════════════════════════════════════════════
+local function tickRainbow(dt)
+    if not S.rainbowMode then return end
+    rainbowHue = (rainbowHue + dt * 0.08) % 1
+    local newAccent = Color3.fromHSV(rainbowHue, 0.75, 1)
+    C.accent = newAccent
+    -- propagate to key UI elements
+    if pingLbl         then pingLbl.TextColor3        = newAccent end
+    if watermarkLabel  then watermarkLabel.TextColor3  = newAccent end
+end
+
+-- ════════════════════════════════════════════
+-- SERVER INFO UPDATE
+-- ════════════════════════════════════════════
+local siUpdateTimer = 0
+local function updateServerInfo(dt)
+    if not S.serverInfoEnabled then return end
+    siUpdateTimer = siUpdateTimer + dt
+    if siUpdateTimer < 5 then return end  -- update every 5s
+    siUpdateTimer = 0
+
+    local jobId   = game.JobId ~= "" and game.JobId:sub(1,8).."…" or "Studio"
+    local age     = math.floor(tick() - serverStartTick)
+    local ageStr  = age >= 60 and (math.floor(age/60).."m "..(age%60).."s") or (age.."s")
+    local ping    = 0
+    pcall(function() ping=math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()) end)
+    local region  = ping < 60 and "EU/NA close" or (ping < 120 and "EU/NA far" or "Asia/SA")
+
+    siRows[1].Text = "Server ID:   " .. jobId
+    siRows[2].Text = "Region:      " .. region .. " (~"..ping.."ms)"
+    siRows[3].Text = "Players:     " .. #Players:GetPlayers()
+    siRows[4].Text = "Server Age:  " .. ageStr
+    siRows[5].Text = "Your ID:     " .. player.UserId
+end
+
+-- ════════════════════════════════════════════
+-- STARTUP SOUND  (plays on password unlock)
+-- ════════════════════════════════════════════
+local function playStartupSound()
+    -- sound removed for compatibility
+end
+
+-- ════════════════════════════════════════════
+-- BALL LANDING ZONE
+-- Flat cylinder on ground below ball, radius scales with height
+-- ════════════════════════════════════════════
+local function updateLandingZone()
+    if not S.landingZone then
+        if landingZonePart then landingZonePart.Transparency=1 end
+        return
+    end
+    local ball = cachedClosestBall
+    if not ball or not ball.Parent then
+        if landingZonePart then landingZonePart.Transparency=1 end
+        return
+    end
+
+    -- Create part once
+    if not landingZonePart or not landingZonePart.Parent then
+        landingZonePart = Instance.new("Part")
+        landingZonePart.Anchored    = true
+        landingZonePart.CanCollide  = false
+        landingZonePart.CastShadow  = false
+        landingZonePart.Material    = Enum.Material.Neon
+        landingZonePart.Shape       = Enum.PartType.Cylinder
+        landingZonePart.Color       = C.cyan
+        landingZonePart.Parent      = WS
+    end
+
+    local ballPos  = ball.Position
+    -- Height above ground: raycast straight down
+    local rayDir   = Vector3.new(0, -200, 0)
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = {character, ball}
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    local hit = WS:Raycast(ballPos, rayDir, rayParams)
+    local groundY = hit and hit.Position.Y or (ballPos.Y - ballPos.Y % 1)
+    local height  = math.max(0, ballPos.Y - groundY)
+
+    -- Radius grows with height, min 1.5, max 8
+    local radius  = math.clamp(1.5 + height * 0.18, 1.5, 8)
+    -- Fade out when ball is nearly on ground
+    local alpha   = math.clamp(height / 3, 0, 1)
+
+    landingZonePart.Size        = Vector3.new(0.15, radius * 2, radius * 2)
+    landingZonePart.CFrame      = CFrame.new(ballPos.X, groundY + 0.08, ballPos.Z)
+                                  * CFrame.Angles(0, 0, math.pi/2)
+    landingZonePart.Transparency = lerp(0.9, 0.25, alpha)
+    landingZonePart.Color       = height > 6 and C.red or (height > 2 and C.gold or C.green)
+end
+
+-- ════════════════════════════════════════════
+-- LAST SEEN GHOST
+-- Leaves a faded BillboardGui marker at enemy's last known position
+-- ════════════════════════════════════════════
+local lastSeenCheckTimer = 0
+
+local function updateLastSeenGhost(dt)
+    local now = tick()
+
+    -- Expire old ghosts
+    for p, d in pairs(lastSeenData) do
+        if now >= d.expiry then
+            if d.part then d.part:Destroy() end
+            lastSeenData[p] = nil
+        end
+    end
+
+    if not S.lastSeenGhost then
+        for _, d in pairs(lastSeenData) do if d.part then d.part:Destroy() end end
+        table.clear(lastSeenData)
+        return
+    end
+
+    lastSeenCheckTimer = lastSeenCheckTimer + dt
+    if lastSeenCheckTimer < 0.1 then return end
+    lastSeenCheckTimer = 0
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == player then continue end
+        -- Only track enemies
+        local isEnemy = true
+        if player.Team and p.Team then isEnemy = p.Team ~= player.Team end
+        if not isEnemy then continue end
+
+        local pChar = p.Character
+        local pRoot = pChar and pChar:FindFirstChild("HumanoidRootPart")
+        if not pRoot then continue end
+
+        -- Check if visible on screen
+        local screenPos, onScreen = camera:WorldToScreenPoint(pRoot.Position)
+        if onScreen and screenPos.Z > 0 then
+            -- Player is visible — remove their ghost if it exists
+            if lastSeenData[p] and lastSeenData[p].part then
+                lastSeenData[p].part:Destroy()
+                lastSeenData[p] = nil
+            end
+            -- Update their last known position (but no ghost while visible)
+            lastSeenData[p] = lastSeenData[p] or {}
+            lastSeenData[p].lastPos = pRoot.Position
+            lastSeenData[p].expiry  = now + 999  -- no expiry while visible
+            lastSeenData[p].visible = true
+        else
+            -- Player went off screen — spawn/update ghost
+            local d = lastSeenData[p]
+            if d and d.visible and d.lastPos then
+                -- Just went off screen — create ghost marker
+                d.visible = false
+                d.expiry  = now + S.lastSeenDuration
+
+                if d.part then d.part:Destroy() end
+
+                local ghost = Instance.new("Part")
+                ghost.Anchored   = true
+                ghost.CanCollide = false
+                ghost.CastShadow = false
+                ghost.Size       = Vector3.new(1, 2, 1)
+                ghost.Material   = Enum.Material.Neon
+                ghost.Color      = C.red
+                ghost.Transparency = 0.55
+                ghost.CFrame     = CFrame.new(d.lastPos)
+                ghost.Parent     = WS
+                pcall(function()
+                    Instance.new("UICorner")  -- not valid on Part but harmless
+                end)
+
+                -- Add a BillboardGui label
+                local bb = Instance.new("BillboardGui")
+                bb.Size          = UDim2.new(0, 60, 0, 20)
+                bb.StudsOffset   = Vector3.new(0, 1.5, 0)
+                bb.AlwaysOnTop   = true
+                bb.Parent        = ghost
+                local lbl = Instance.new("TextLabel")
+                lbl.Size               = UDim2.new(1,0,1,0)
+                lbl.BackgroundTransparency = 1
+                lbl.Text               = p.Name
+                lbl.TextColor3         = C.red
+                lbl.TextSize           = 10
+                lbl.Font               = Enum.Font.GothamBold
+                lbl.Parent             = bb
+
+                d.part = ghost
+
+                -- Fade ghost out over its lifetime using a tween
+                local lifetime = S.lastSeenDuration
+                pcall(function()
+                    TweenService:Create(ghost,
+                        TweenInfo.new(lifetime, Enum.EasingStyle.Linear),
+                        {Transparency = 1}
+                    ):Play()
+                end)
+            end
+        end
+    end
+end
+
+-- ════════════════════════════════════════════
+-- BALL VELOCITY COLOUR CODING
+-- Updates SelectionBox colour based on ball speed
+-- ════════════════════════════════════════════
+local function updateBallVelColor()
+    if not S.ballESP then return end
+    local ball = cachedClosestBall
+    if not ball or not ball.Parent then return end
+    local sb = ballSelBoxes[ball]
+    if not sb then return end
+
+    local vel = ballVelocities[ball]
+    local spd = vel and vel.Magnitude or 0
+
+    local col
+    if spd < 8 then
+        col = C.green                              -- slow / stationary
+    elseif spd < 28 then
+        -- lerp green→gold
+        local t = (spd - 8) / 20
+        col = Color3.fromRGB(
+            math.floor(lerp(60,  255, t)),
+            math.floor(lerp(210, 195, t)),
+            math.floor(lerp(110,  55, t)))
+    else
+        -- lerp gold→red
+        local t = math.clamp((spd - 28) / 20, 0, 1)
+        col = Color3.fromRGB(
+            math.floor(lerp(255, 230, t)),
+            math.floor(lerp(195,  65, t)),
+            math.floor(lerp( 55,  65, t)))
+    end
+
+    sb.Color3        = col
+    sb.SurfaceColor3 = col
+end
+
+-- ════════════════════════════════════════════
+-- DANGER ZONE HIGHLIGHT
+-- Cylinder ring on ground around player when enemy is closing
+-- ════════════════════════════════════════════
+local function updateDangerZone()
+    if not S.dangerZone then
+        if dangerZonePart then dangerZonePart.Transparency=1 end
+        return
+    end
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then
+        if dangerZonePart then dangerZonePart.Transparency=1 end
+        return
+    end
+
+    -- Create ring part once
+    if not dangerZonePart or not dangerZonePart.Parent then
+        dangerZonePart = Instance.new("Part")
+        dangerZonePart.Anchored   = true
+        dangerZonePart.CanCollide = false
+        dangerZonePart.CastShadow = false
+        dangerZonePart.Material   = Enum.Material.Neon
+        dangerZonePart.Shape      = Enum.PartType.Cylinder
+        dangerZonePart.Color      = C.red
+        dangerZonePart.Parent     = WS
+    end
+
+    -- Check if any enemy is within danger radius and closing (moving toward us)
+    local myPos    = root.Position
+    local danger   = false
+    local closest  = math.huge
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == player then continue end
+        local isEnemy = true
+        if player.Team and p.Team then isEnemy = p.Team ~= player.Team end
+        if not isEnemy then continue end
+        local pRoot = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+        if not pRoot then continue end
+        local dist = (pRoot.Position - myPos).Magnitude
+        if dist <= S.dangerRadius then
+            -- Check if they're closing (velocity toward us)
+            local vel = playerVelocities[p]
+            local closing = false
+            if vel then
+                local toUs = (myPos - pRoot.Position)
+                if toUs.Magnitude > 0 then
+                    closing = vel:Dot(toUs.Unit) > 1.5
+                end
+            else
+                closing = true  -- no velocity data, assume closing
+            end
+            if closing then
+                danger = true
+                if dist < closest then closest = dist end
+            end
+        end
+    end
+
+    local r = S.dangerRadius
+    dangerZonePart.Size        = Vector3.new(0.15, r * 2, r * 2)
+    dangerZonePart.CFrame      = CFrame.new(myPos.X, myPos.Y - 2.8, myPos.Z)
+                                 * CFrame.Angles(0, 0, math.pi/2)
+
+    if danger then
+        -- Pulse opacity
+        local pulse = 0.3 + 0.4 * math.abs(math.sin(tick() * 4))
+        dangerZonePart.Transparency = pulse
+        dangerZonePart.Color        = C.red
+    else
+        dangerZonePart.Transparency = 1  -- hidden when safe
+    end
+end
+
+-- ════════════════════════════════════════════
+-- BALL MAGNET INDICATOR
+-- Pulses the ball arrow when ball is within reach range
+-- ════════════════════════════════════════════
+local function updateMagnetIndicator(dt)
+    if not S.magnetIndicator or not ballArrowFrame or not S.ballArrow then return end
+
+    local ball = cachedClosestBall
+    if not ball or not ball.Parent then return end
+
+    -- Check if ball overlaps with ANY leg reach box
+    local inRange = false
+    for _, leg in ipairs(legs) do
+        if leg and leg.Parent then
+            local delta = ball.Position - leg.Position
+            if math.abs(delta.X) <= S.reachX
+            and math.abs(delta.Y) <= S.reachY
+            and math.abs(delta.Z) <= S.reachZ then
+                inRange = true
+                break
+            end
+        end
+    end
+
+    if inRange then
+        magnetPulseTimer = magnetPulseTimer + dt
+        -- Pulse every 0.18s
+        if magnetPulseTimer >= 0.18 then
+            magnetPulseTimer = 0
+            magnetPulseState = not magnetPulseState
+        end
+        -- Alternate colour and size
+        arrowTri.TextColor3  = magnetPulseState and C.green or Color3.fromRGB(255,255,255)
+        arrowTri.TextSize    = magnetPulseState and 34 or 24
+        arrowLabel.Text      = "IN RANGE"
+        arrowLabel.TextColor3 = C.green
+    else
+        magnetPulseTimer = 0
+        magnetPulseState = false
+        arrowTri.TextColor3  = C.gold
+        arrowTri.TextSize    = 28
+        arrowLabel.TextColor3 = C.gold
+        -- restore distance text (updateBallArrow handles this but reset label here)
+    end
+end
+
+-- ════════════════════════════════════════════
+-- ADMIN WATCHER
+-- ════════════════════════════════════════════
+Players.PlayerAdded:Connect(function(p)
+    if S.autoDisableAdmin and isAdmin(p) then
+        S.enabled=false; notify("Admin detected — reach off", C.gold)
+    end
+end)
+
+-- ════════════════════════════════════════════
+-- DIRECTIONAL / HELPERS
+-- ════════════════════════════════════════════
+local function isFacingBall(part,ballPos)
+    if not S.directional then return true end
+    local root=character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return true end
+    return root.CFrame.LookVector:Dot((ballPos-root.Position).Unit) >= math.cos(math.rad(S.dirAngle/2))
+end
+
+local function getClosestBall()
+    local closest,best=nil,math.huge
+    local root=character and character:FindFirstChild("HumanoidRootPart"); if not root then return nil end
+    for _,ball in ipairs(balls) do
+        if ball and ball.Parent then
+            local d=(ball.Position-root.Position).Magnitude; if d<best then best=d; closest=ball end
+        end
+    end
+    return closest
+end
+
+local function ballOwnedByWhitelisted(ball)
+    if not S.whitelistMode then return true end
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=player then
+            for _,wn in ipairs(S.whitelist) do
+                if p.Name==wn and p.Character then
+                    local r=p.Character:FindFirstChild("HumanoidRootPart")
+                    if r and (r.Position-ball.Position).Magnitude<10 then return true end
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- ════════════════════════════════════════════
+-- MERGED HEARTBEAT  (single connection)
+-- ════════════════════════════════════════════
+local frameCount   = 0
+local fpsTimer     = tick()
+local fpsDisplay   = 0
+local pingTimer    = 0
+
+RunService.Heartbeat:Connect(function(dt)
+    frameCount = frameCount + 1
+    local now  = tick()
+    local th   = S.visualThrottle   -- 1 = normal, 2 = perf mode
+
+    -- FPS counter
+    if now - fpsTimer >= 1 then
+        fpsDisplay = frameCount; frameCount = 0; fpsTimer = now
+    end
+
+    -- ── PING (every ~1s) ────────────────────
+    pingTimer = pingTimer + dt
+    if pingTimer >= 1 then
+        pingTimer = 0
+        pcall(function()
+            local ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+            local ms   = math.floor(ping)
+            local col  = ms < 80 and C.green or (ms < 150 and C.gold or C.red)
+            pingLbl.Text       = ms .. " ms"
+            pingLbl.TextColor3 = col
+        end)
+    end
+
+    -- ── BURST LIMITER RESET (per second) ────
+    if S.burstLimiter then
+        S.burstTimer = S.burstTimer + dt
+        if S.burstTimer >= 1 then
+            S.burstTimer = 0
+            S.burstCount = 0
+        end
+    end
+
+    -- ── BALL VELOCITY TRACKING ──────────────
+    if not S.perfMode or frameCount % 2 == 0 then
+        for _, ball in ipairs(balls) do
+            if ball and ball.Parent then
+                local prev = lastBallPositions[ball]
+                if prev then
+                    ballVelocities[ball] = (ball.Position - prev) / math.max(dt, 0.001)
+                end
+                lastBallPositions[ball] = ball.Position
+            end
+        end
+    end
+
+    -- ── PLAYER VELOCITY TRACKING ────────────
+    if frameCount % 2 == 0 then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Character then
+                local r = p.Character:FindFirstChild("HumanoidRootPart")
+                if r then
+                    local prev = playerPrevPos[p]
+                    if prev then
+                        playerVelocities[p] = (r.Position - prev) / math.max(dt * 2, 0.001)
+                    end
+                    playerPrevPos[p] = r.Position
+                end
+            end
+        end
+    end
+
+    -- ── CACHED CLOSEST BALL ─────────────────
+    closestBallTimer = closestBallTimer + 1
+    if closestBallTimer >= 6 * th then
+        closestBallTimer = 0
+        cachedClosestBall = getClosestBall()
+    end
+
+    -- ── STANDARD VISUALS (every 4*th frames) ─
+    if frameCount % (4 * th) == 0 then
+        if S.showHitbox      then rebuildHitbox()          end
+        if S.ballESP         then updateBallESP()          end
+        if S.playerHighlight then updatePlayerHighlights() end
+        updateBallTrail()
+        updateVelocityArrow()
+        if S.ballVelColor    then updateBallVelColor()     end
+    end
+
+    -- ── AWARENESS VISUALS (every 3*th frames) ─
+    if frameCount % (3 * th) == 0 then
+        updateBallArrow()
+        if S.passPredictor  then updatePassPredictor()  end
+        if S.miniScoreboard then updateMiniScoreboard() end
+        updateLandingZone()
+        updateDangerZone()
+    end
+
+    -- ── LAST SEEN GHOST (every frame, dt-gated internally) ──
+    updateLastSeenGhost(dt)
+
+    -- ── MAGNET INDICATOR ────────────────────
+    if S.magnetIndicator then updateMagnetIndicator(dt) end
+
+    -- ── PLAYER PATH LINES ───────────────────
+    if S.pathLines or next(pathData) ~= nil then
+        updatePathLines(frameCount)
+    end
+
+    -- ── RAINBOW MODE ────────────────────────
+    tickRainbow(dt)
+
+    -- ── SERVER INFO ─────────────────────────
+    if S.serverInfoEnabled then updateServerInfo(dt) end
+
+    -- ── CLOCK (every 30 frames) ─────────────
+    if frameCount % 30 == 0 and S.clockEnabled then
+        local ok, t = pcall(os.date, "*t")
+        if ok and type(t) == "table" then
+            clockTimeLbl.Text = string.format("%02d:%02d:%02d", t.hour, t.min, t.sec)
+        end
+        clockSessionLbl.Text = "session " .. math.floor(now - S.sessionStart) .. "s"
+    end
+
+    -- ── FINGERPRINT RANDOMISER ───────────────
+    tickFingerprintRandomiser(dt)
+
+    -- ── TIME / AMBIENT ──────────────────────
+    if S.timeEnabled    then Lighting.ClockTime = S.timeOfDay end
+    if S.ambientEnabled then
+        local b = math.min(255, math.floor(255 * (S.ambientBrightness - 1) / 4))
+        Lighting.Ambient        = Color3.fromRGB(b, b, b)
+        Lighting.OutdoorAmbient = Color3.fromRGB(b, b, b)
+    end
+
+    -- ── DESYNC ──────────────────────────────
+    if S.desyncEnabled and not desyncConn then
+        tickDesync()
+    elseif not S.desyncEnabled and desyncConn then
+        desyncConn:Disconnect(); desyncConn = nil
+    end
+
+    -- ── TRAJECTORY ──────────────────────────
+    if S.trajEnabled and not S.disableTrajPerf then
+        if frameCount % (2 * th) == 0 then
+            local tb = S.closestOnly and cachedClosestBall
+                       or (balls[1] and balls[1].Parent and balls[1])
+            updateTrajectory(tb)
+        end
+    elseif #trajParts > 0 then
+        clearTraj()
+    end
+
+    -- ── GK PREDICTOR ────────────────────────
+    if S.gkPredictor and not S.disableGKPerf then
+        if frameCount % (4 * th) == 0 then
+            local tb = S.closestOnly and cachedClosestBall
+                       or (balls[1] and balls[1].Parent and balls[1])
+            updateGKPredictor(tb)
+        end
+    end
+
+    -- ── STATUS BAR (every 16*th frames) ─────
+    if frameCount % (16 * th) == 0 then
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local nd   = "–"
+        if root and #balls > 0 then
+            local md = math.huge
+            for _, b in ipairs(balls) do
+                if b and b.Parent then
+                    local d = (b.Position - root.Position).Magnitude
+                    if d < md then md = d end
+                end
+            end
+            if md < math.huge then nd = math.floor(md * 10 + 0.5) / 10 end
+        end
+        local modeTag = S.perfMode and "  [PERF]" or ""
+        statusTxt.Text       = (S.enabled and "● ACTIVE" or "○ IDLE")
+                               .. "  Ball: " .. nd .. "st  " .. fpsDisplay .. "fps" .. modeTag
+        statusTxt.TextColor3 = S.enabled and C.green or C.text2
+        touchTxt.Text        = "Touches: " .. S.touchCount
+                               .. "   " .. math.floor(now - S.sessionStart) .. "s"
+        refreshLog()
+    end
+
+    -- ══════════════════════════════════════
+    -- REACH LOGIC
+    -- ══════════════════════════════════════
+    if #legs == 0 and #heads == 0 then return end
+
+    -- Auto-reach trigger
+    if S.autoReach and not S.enabled then
+        local root2 = character and character:FindFirstChild("HumanoidRootPart")
+        if root2 then
+            for _, ball in ipairs(balls) do
+                if ball and ball.Parent
+                   and (ball.Position - root2.Position).Magnitude <= S.autoReachDist then
+                    S.enabled = true; notify("Auto-reach on", C.cyan); break
+                end
+            end
+        end
+    end
+
+    if not S.enabled then return end
+    if S.cooldownEnabled and (now - lastTouchTime < S.cooldownTime) then return end
+    if S.burstLimiter and S.burstCount >= S.burstMax then return end
+
+    local ballList = S.closestOnly
+        and (cachedClosestBall and {cachedClosestBall} or {})
+        or balls
+
+    -- Momentum offset
+    local selfVelOffset = Vector3.new(0, 0, 0)
+    if S.momentumPredict then
+        local myVel = playerVelocities[player]
+        if myVel then selfVelOffset = myVel * (3 / 60) end
+    end
+
+    for _, ball in ipairs(ballList) do
+        if not ball or not ball.Parent then continue end
+        if not ballOwnedByWhitelisted(ball) then continue end
+
+        local checkPos = ball.Position
+        if S.ballPredict then
+            local vel = ballVelocities[ball]
+            if vel then checkPos = checkPos + vel * (S.predictFrames / 60) end
+        end
+
+        -- ── LEG REACH ──
+        for _, leg in ipairs(legs) do
+            if not leg or not leg.Parent then continue end
+            if not isFacingBall(leg, checkPos) then continue end
+            if S.burstLimiter and S.burstCount >= S.burstMax then break end
+            local rx = S.reachX + randomOffset()
+            local ry = S.reachY + randomOffset()
+            local rz = S.reachZ + randomOffset()
+            if S.velocityReach then
+                local vel = ballVelocities[ball]
+                if vel then
+                    local m = 1 + (vel.Magnitude / 20) * (S.velocityMult - 1)
+                    rx = rx * m; ry = ry * m; rz = rz * m
+                end
+            end
+            local legPos = leg.Position + selfVelOffset
+            local delta  = checkPos - legPos
+            if math.abs(delta.X) <= rx and math.abs(delta.Y) <= ry and math.abs(delta.Z) <= rz then
+                firetouchinterest(ball, leg, 0)
+                firetouchinterest(ball, leg, 1)
+                lastTouchTime = tick()
+                if S.trackStats then S.touchCount = S.touchCount + 1 end
+                if S.burstLimiter then S.burstCount = S.burstCount + 1 end
+            end
+        end
+
+        -- ── HEAD REACH ──
+        if S.headReachEnabled then
+            for _, head in ipairs(heads) do
+                if not head or not head.Parent then continue end
+                if S.burstLimiter and S.burstCount >= S.burstMax then break end
+                local headPos = head.Position + selfVelOffset
+                local delta   = checkPos - headPos
+                local rx = S.headReachX + randomOffset()
+                local ry = S.headReachY + randomOffset()
+                local rz = S.headReachZ + randomOffset()
+                if math.abs(delta.X) <= rx and math.abs(delta.Y) <= ry and math.abs(delta.Z) <= rz then
+                    firetouchinterest(ball, head, 0)
+                    firetouchinterest(ball, head, 1)
+                    lastTouchTime = tick()
+                    if S.trackStats then S.touchCount = S.touchCount + 1 end
+                    if S.burstLimiter then S.burstCount = S.burstCount + 1 end
+                end
+            end
+        end
+    end
+end)
+-- ════════════════════════════════════════════
+-- STARTUP
+-- ════════════════════════════════════════════
+-- (notifications fired after password unlock above)
